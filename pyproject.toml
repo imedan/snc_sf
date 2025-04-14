@@ -8,6 +8,11 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "astropy (>=6.0.1,<7.0.0)",
+    "numpy (>=2.2.4,<3.0.0)",
+    "matplotlib (>=3.10.1,<4.0.0)",
+    "healpy (>=1.18.1,<2.0.0)",
+    "polars-lts-cpu (>=1.27.1,<2.0.0)",
 ]
 
 [tool.poetry]
