@@ -52,7 +52,8 @@ def calculateSF(data: pl.DataFrame, sf_file:str = None) -> pl.DataFrame:
         healpix, phot_g_mean_mag, g_rp
     
     sf_file: str
-        Path to the precalculated data for the selection function
+        Path to the data for the selection function. If None, will default
+        to precomputed one.
     
     Returns
     -------
@@ -91,3 +92,52 @@ def calculateSF(data: pl.DataFrame, sf_file:str = None) -> pl.DataFrame:
 
     subsamp = subsamp.join(subSF_mock, on=['healpix_', 'phot_g_mean_mag_', 'g_rp_'])
     return subsamp
+
+
+def cal_veff(healpix: np.ndarray | pl.Series,
+             phot_g_mean_mag: np.ndarray | pl.Series,
+             parallax: np.ndarray | pl.Series,
+             galb: np.ndarray | pl.Series,
+             order: int,
+             G_lim: float) -> np.ndarray | pl.Series:
+    """
+    Calculate the effective volume of the data
+
+    Parameters
+    ---------
+    healpix: np.ndarray | pl.Series
+        The healpix indecies of the data.
+    
+    phot_g_mean_mag: np.ndarray | pl.Series
+        Gaia G mag of the data.
+    
+    parallax: np.ndarray | pl.Series
+        Parallax of the data in mas.
+    
+    galb: np.ndarray | pl.Series
+        The Galactic latitude of the data in radians.
+    
+    order: int
+        Healpix order used.
+    
+    G_lim: float
+        The limiting magnitude assumed.
+    
+    Returns
+    -------
+    Veff: np.ndarray | pl.Series
+        The effective volume of the data in pc^3
+    """
+    solid_ang = 4 * np.pi * len(np.unique(healpix)) / hp.order2npix(order)
+
+    MG = phot_g_mean_mag + 5 * np.log10(1e-3 * parallax) + 5
+
+    dmax = 10 ** ((G_lim - MG) / 5 + 1)
+    dmax[dmax > 100] = 100
+
+    H = 365  # scale height of thin disc in pc
+
+    zeta = dmax * np.sin(abs(galb)) / H
+
+    Veff = solid_ang * (H / abs(np.sin(galb))) ** 3 * (2 - (zeta ** 2 + 2 * zeta + 2) * np.exp(-zeta))
+    return Veff
