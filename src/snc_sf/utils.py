@@ -71,7 +71,7 @@ def calculateSF(data: pl.DataFrame, sf_file:str = None) -> pl.DataFrame:
     subsamp = data.sql(query=f'''       
                         WITH subsamp AS (
                               SELECT
-                                healpix AS healpix_,
+                                healpix_,
                                 CAST(floor((phot_g_mean_mag - {subSF_mock_dict['phot_g_mean_mag'][0]}) / {subSF_mock_dict['phot_g_mean_mag'][2]}) AS int) AS phot_g_mean_mag_,
                                 CAST(floor(((g_rp) - {subSF_mock_dict['g_rp'][0]}) / {subSF_mock_dict['g_rp'][2]}) AS int) AS g_rp_
                             FROM self
@@ -140,4 +140,51 @@ def cal_veff(healpix: np.ndarray | pl.Series,
     zeta = dmax * np.sin(abs(galb)) / H
 
     Veff = solid_ang * (H / abs(np.sin(galb))) ** 3 * (2 - (zeta ** 2 + 2 * zeta + 2) * np.exp(-zeta))
+    if isinstance(Veff, pl.Series):
+       Veff = Veff.rename('Veff')
     return Veff
+
+
+def calc_subsample_p(km: np.ndarray | pl.Series,
+                     nm: np.ndarray | pl.Series,
+                     k: np.ndarray | pl.Series,
+                     n: np.ndarray | pl.Series,
+                     RNG: np.random._generator.Generator = np.random.default_rng(666)) -> np.ndarray:
+    """
+    Calculate the probability of target being in a subsample
+
+    Parameters
+    ----------
+    km: np.ndarray | pl.Series
+        The number of stars within 100 pc in a bin according to Gaia Mock catalog.
+    
+    nm: np.ndarray | pl.Series
+        The number of stars in a bin according to Gaia Mock catalog.
+    
+    k: np.ndarray | pl.Series
+        The number of stars in a bin for the 100 pc subsample.
+    
+    n: np.ndarray | pl.Series
+        The number of stars in a bin in the Gaia catalog.
+    
+    RNG: np.random._generator.Generator
+            Random generator with some seed.
+    
+    Returns
+    -------
+    pselect: np.ndarray
+        The probability of selecting that star in the subsample.
+    """
+    alpham = km + 1
+    betam = nm - km + 1
+    frac = RNG.beta(alpham, betam)
+
+    nf = np.round(n * frac)
+    nf[nf < k] = k[nf < k]
+
+    alpha = k + 1
+    beta = nf - k + 1
+
+    pselect = np.zeros(len(beta)) + np.nan
+    pselect[beta > 0] = RNG.beta(alpha[beta > 0], beta[beta > 0])
+    return pselect
