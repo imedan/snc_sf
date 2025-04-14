@@ -117,6 +117,7 @@ class SNCSelectionFunction(object):
                 self.coord.galactic.b.rad,
                 self.subSF_mock_dict['healpix'],
                 self.G_lim)
+        Veff_samps[Veff_samps <= 0] = np.nan
         self.data = self.data.with_columns(Veff_samps=Veff_samps)
 
         # get the posterior samples for the subsample selection
