@@ -115,7 +115,7 @@ class SNCSelectionFunction(object):
                 RNG.normal(self.data['parallax'],
                            self.data['parallax_error']),
                 self.coord.galactic.b.rad,
-                4,  # use larger order to estimate sky coverage
+                5,  # use larger order to estimate sky coverage
                 self.G_lim)
         Veff_samps[Veff_samps <= 0] = np.nan
         self.data = self.data.with_columns(Veff_samps=Veff_samps)
