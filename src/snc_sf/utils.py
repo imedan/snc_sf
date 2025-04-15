@@ -78,7 +78,7 @@ def calculateSF(data: pl.DataFrame, sf_file:str = None) -> pl.DataFrame:
                             WHERE g_rp > {subSF_mock_dict['g_rp'][0]}
                                   AND g_rp < {subSF_mock_dict['g_rp'][1]}
                                   AND phot_g_mean_mag > {subSF_mock_dict['phot_g_mean_mag'][0]}
-                                  AND phot_g_mean_mag < {subSF_mock_dict['phot_g_mean_mag'][1]} AND parallax > 10
+                                  AND phot_g_mean_mag < {subSF_mock_dict['phot_g_mean_mag'][1]}
                         )
                         SELECT 
                             healpix_,
@@ -94,7 +94,7 @@ def calculateSF(data: pl.DataFrame, sf_file:str = None) -> pl.DataFrame:
     return subsamp
 
 
-def cal_veff(healpix: np.ndarray | pl.Series,
+def cal_veff(coord: SkyCoord,
              phot_g_mean_mag: np.ndarray | pl.Series,
              parallax: np.ndarray | pl.Series,
              galb: np.ndarray | pl.Series,
@@ -105,8 +105,8 @@ def cal_veff(healpix: np.ndarray | pl.Series,
 
     Parameters
     ---------
-    healpix: np.ndarray | pl.Series
-        The healpix indecies of the data.
+    coord: astropy.coordinates.SkyCoord
+        Astropy coordinates of the data
     
     phot_g_mean_mag: np.ndarray | pl.Series
         Gaia G mag of the data.
@@ -118,7 +118,7 @@ def cal_veff(healpix: np.ndarray | pl.Series,
         The Galactic latitude of the data in radians.
     
     order: int
-        Healpix order used.
+        Healpix order for estimating the sky coverage
     
     G_lim: float
         The limiting magnitude assumed.
@@ -128,6 +128,8 @@ def cal_veff(healpix: np.ndarray | pl.Series,
     Veff: np.ndarray | pl.Series
         The effective volume of the data in pc^3
     """
+    healpix = coord2healpix(coord,
+                            nside=2 ** order)
     solid_ang = 4 * np.pi * len(np.unique(healpix)) / hp.order2npix(order)
 
     MG = phot_g_mean_mag + 5 * np.log10(1e-3 * parallax) + 5

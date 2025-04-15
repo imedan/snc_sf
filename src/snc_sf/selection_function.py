@@ -69,8 +69,7 @@ class SNCSelectionFunction(object):
             self.subSF_mock_dict = ast.literal_eval(f.readline().strip("#").strip("\n"))
 
         # add healpix index colum
-        healpix = coord2healpix(SkyCoord(ra=np.array(self.data['ra']) * u.deg,
-                                         dec=np.array(self.data['dec']) * u.deg),
+        healpix = coord2healpix(self.coord,
                                  nside=2 ** self.subSF_mock_dict['healpix'])
         self.data = self.data.with_columns(healpix_=pl.Series(healpix))
 
@@ -108,17 +107,19 @@ class SNCSelectionFunction(object):
         # get the effective volume samples
         Veff_samps = np.zeros((len(self.data), nsamps))
         for i in range(nsamps):
+            idx = RNG.choice(len(self.coord), len(self.coord))
             Veff_samps[:, i] = cal_veff(
-                self.data['healpix_'],
+                self.coord[idx],
                 RNG.normal(self.data['phot_g_mean_mag'],
-                                 self.data['phot_g_mean_mag_error']),
+                           self.data['phot_g_mean_mag_error']),
                 RNG.normal(self.data['parallax'],
-                                 self.data['parallax_error']),
+                           self.data['parallax_error']),
                 self.coord.galactic.b.rad,
-                self.subSF_mock_dict['healpix'],
+                4,  # use larger order to estimate sky coverage
                 self.G_lim)
         Veff_samps[Veff_samps <= 0] = np.nan
         self.data = self.data.with_columns(Veff_samps=Veff_samps)
+        del Veff_samps
 
         # get the posterior samples for the subsample selection
         pselect_samps = np.zeros((len(self.data), nsamps))
@@ -130,3 +131,4 @@ class SNCSelectionFunction(object):
                 np.array(self.data['n']),
                 RNG)
         self.data = self.data.with_columns(pselect_samps=pselect_samps)
+        del pselect_samps
