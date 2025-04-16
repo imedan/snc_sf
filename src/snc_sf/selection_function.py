@@ -5,6 +5,7 @@ import numpy as np
 import polars as pl
 from importlib.resources import open_binary
 import ast
+from collections.abc import Callable
 
 from .utils import coord2healpix, calculateSF, cal_veff, calc_subsample_p
 
@@ -132,3 +133,79 @@ class SNCSelectionFunction(object):
                 RNG)
         self.data = self.data.with_columns(pselect_samps=pselect_samps)
         del pselect_samps
+
+        # save number of samples for posterior
+        self.nsamps = nsamps
+
+    def bootstrap_values(self,
+                         func: Callable,
+                         filt: pl.Expr = None,
+                         data_expr: list = [],
+                         args: tuple | list = ()) -> np.ndarray:
+        """
+        Bootstrap some value from a function based on posterior samples
+
+        Parameters
+        ----------
+        func: function
+            Function to calculate some parameter for the bootstrap
+            based on the posterior samples from the selection function.
+            The first input must be 'weights', which is the weight applied to a star
+            defined as 1 / (Veff * pselect), i.e. func(weights, *data_args, *args). Output of func
+            must be a float or np.ndarray.
+
+        filt: pl.Expr
+            Polars expression for the filter to be placed on the data
+            for the calculation
+        
+        data_expr: list
+            Additional data from the dataset to be used within func for the calculation.
+            Each index of the list should be a Polars expression. The code below will
+            turn this into a numpy array based on the filter, which is what will then
+            be passed to func as *data_args.
+        
+        args: list
+            Additional arguments to be passed to func, that are not data from the
+            dataset
+
+        Returns
+        -------
+        nboot: np.ndarray
+            The bootstrapped values of size (self.nsamps, N). Here N
+            depends on output from func. If output of func is array, nboot will be ND
+            with N being sahpe of output. Otherwise, nboot will be 1D array.
+        """
+        if filt is None:
+            filtered = self.data.filter()
+        else:
+            filtered = self.data.filter(filt)
+       
+        # test output to get size
+        pselect = filtered.select(pl.col("pselect_samps").arr.get(0)).to_numpy().reshape((-1, ))
+        Veff = filtered.select(pl.col("Veff_samps").arr.get(0)).to_numpy().reshape((-1, ))
+        ev = np.isfinite(pselect) & np.isfinite(Veff)
+        idx = np.random.choice(np.sum(ev), np.sum(ev))
+        if len(data_expr) > 0:
+            data_args = tuple([filtered.select(de).to_numpy().reshape((-1, ))[ev][idx] for de in data_expr])
+        else:
+            data_args = ()
+        test_out = func(1 / (pselect[ev][idx] * Veff[ev][idx]), *data_args, *args)
+
+        # create nboot with right shape
+        nboot_shape = [self.nsamps]
+        if isinstance(test_out, np.ndarray):
+            nboot_shape += list(test_out.shape)
+        nboot = np.zeros(nboot_shape)
+
+        # do the boostrap
+        for i in range(self.nsamps):
+            pselect = filtered.select(pl.col("pselect_samps").arr.get(i)).to_numpy().reshape((-1, ))
+            Veff = filtered.select(pl.col("Veff_samps").arr.get(i)).to_numpy().reshape((-1, ))
+            ev = np.isfinite(pselect) & np.isfinite(Veff)
+            idx = np.random.choice(np.sum(ev), np.sum(ev))
+            if len(data_expr) > 0:
+                data_args = tuple([filtered.select(de).to_numpy().reshape((-1, ))[ev][idx] for de in data_expr])
+            else:
+                data_args = ()
+            nboot[i] = func(1 / (pselect[ev][idx] * Veff[ev][idx]), *data_args, *args)
+        return nboot
