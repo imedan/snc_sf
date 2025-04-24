@@ -128,9 +128,14 @@ def cal_veff(coord: SkyCoord,
     Veff: np.ndarray | pl.Series
         The effective volume of the data in pc^3
     """
-    healpix = coord2healpix(coord,
-                            nside=2 ** order)
-    solid_ang = 4 * np.pi * len(np.unique(healpix)) / hp.order2npix(order)
+    # get solid angle approximation in bins of magntiude
+    Gbins = np.arange(2.5, 22.5, 2.5)
+    solid_ang = np.zeros(len(phot_g_mean_mag))
+    for i in range(len(Gbins) - 1):
+        evG = (phot_g_mean_mag > Gbins[i]) & (phot_g_mean_mag <= Gbins[i + 1])
+        healpix = coord2healpix(coord[evG],
+                                nside=2 ** order)
+        solid_ang[evG] = 4 * np.pi * len(np.unique(healpix)) / hp.order2npix(order)
 
     MG = phot_g_mean_mag + 5 * np.log10(1e-3 * parallax) + 5
 
