@@ -158,7 +158,8 @@ class SNCSelectionFunction(object):
             Function to calculate some parameter for the bootstrap
             based on the posterior samples from the selection function.
             The first input must be 'weights', which is the weight applied to a star
-            defined as 1 / (Veff * pselect), i.e. func(weights, *data_args, *args). Output of func
+            defined as 1 / (Veff * pselect * completeness),
+            i.e. func(weights, *data_args, *args). Output of func
             must be a float or np.ndarray.
 
         filt: pl.Expr
