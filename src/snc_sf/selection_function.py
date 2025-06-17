@@ -6,6 +6,7 @@ import polars as pl
 from importlib.resources import open_binary
 import ast
 from collections.abc import Callable
+from gaiaunlimited.selectionfunctions import DR3SelectionFunctionTCG
 
 from .utils import coord2healpix, calculateSF, cal_veff, calc_subsample_p
 
@@ -91,6 +92,12 @@ class SNCSelectionFunction(object):
 
         # join to the subselection
         self.data = self.data.join(self.subsamp, on=['healpix_', 'phot_g_mean_mag_', 'g_rp_'], how='left')
+
+        # get the emperical Gaia DR3 selection function
+        mapHpx7 = DR3SelectionFunctionTCG()
+        completeness = mapHpx7.query(self.coord,
+                                     np.array(self.data['phot_g_mean_mag']))
+        self.data = self.data.with_columns(completeness=completeness)
 
     def sample_posterior(self, nsamps: int,
                          RNG: np.random._generator.Generator = np.random.default_rng(666)):
@@ -183,13 +190,15 @@ class SNCSelectionFunction(object):
         # test output to get size
         pselect = filtered.select(pl.col("pselect_samps").arr.get(0)).to_numpy().reshape((-1, ))
         Veff = filtered.select(pl.col("Veff_samps").arr.get(0)).to_numpy().reshape((-1, ))
-        ev = np.isfinite(pselect) & np.isfinite(Veff)
+        completeness = filtered.select(pl.col("completeness")).to_numpy().reshape((-1,))
+        ev = np.isfinite(pselect) & np.isfinite(Veff) & np.isfinite(completeness)
         idx = np.random.choice(np.sum(ev), np.sum(ev))
         if len(data_expr) > 0:
             data_args = tuple([filtered.select(de).to_numpy().reshape((-1, ))[ev][idx] for de in data_expr])
         else:
             data_args = ()
-        test_out = func(1 / (pselect[ev][idx] * Veff[ev][idx]), *data_args, *args)
+        test_out = func(1 / (pselect[ev][idx] * Veff[ev][idx] * completeness[ev][idx]),
+                        *data_args, *args)
 
         # create nboot with right shape
         nboot_shape = [self.nsamps]
@@ -201,11 +210,12 @@ class SNCSelectionFunction(object):
         for i in range(self.nsamps):
             pselect = filtered.select(pl.col("pselect_samps").arr.get(i)).to_numpy().reshape((-1, ))
             Veff = filtered.select(pl.col("Veff_samps").arr.get(i)).to_numpy().reshape((-1, ))
-            ev = np.isfinite(pselect) & np.isfinite(Veff)
+            ev = np.isfinite(pselect) & np.isfinite(Veff) & np.isfinite(completeness)
             idx = np.random.choice(np.sum(ev), np.sum(ev))
             if len(data_expr) > 0:
                 data_args = tuple([filtered.select(de).to_numpy().reshape((-1, ))[ev][idx] for de in data_expr])
             else:
                 data_args = ()
-            nboot[i] = func(1 / (pselect[ev][idx] * Veff[ev][idx]), *data_args, *args)
+            nboot[i] = func(1 / (pselect[ev][idx] * Veff[ev][idx] * completeness[ev][idx]),
+                            *data_args, *args)
         return nboot
