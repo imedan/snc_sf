@@ -17,6 +17,7 @@ dependencies = [
     "gaiaunlimited (>=0.3.0,<0.4.0)",
     "polars (>=1.32.2,<2.0.0)",
     "jax (>=0.7.0,<0.8.0)",
+    "notebook (>=7.4.5,<8.0.0)",
 ]
 
 [tool.poetry]
