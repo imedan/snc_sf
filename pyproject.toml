@@ -6,16 +6,17 @@ authors = [
     {name = "imedan",email = "ilija.medan@gmail.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "astropy (>=6.0.1,<7.0.0)",
     "numpy (>=2.2.4,<3.0.0)",
     "matplotlib (>=3.10.1,<4.0.0)",
     "healpy (>=1.18.1,<2.0.0)",
-    "polars-lts-cpu (>=1.27.1,<2.0.0)",
     "tqdm (>=4.67.1,<5.0.0)",
     "sdss-semaphore (>=0.2.4,<0.3.0)",
     "gaiaunlimited (>=0.3.0,<0.4.0)",
+    "polars (>=1.32.2,<2.0.0)",
+    "jax (>=0.7.0,<0.8.0)",
 ]
 
 [tool.poetry]
