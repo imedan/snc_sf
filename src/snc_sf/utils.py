@@ -40,20 +40,27 @@ def coord2healpix(coord: SkyCoord, nside: int, nest: bool = True) -> np.ndarray:
     return hpind
 
 
-def calculateSF(data: pl.DataFrame, sf_file:str = None) -> pl.DataFrame:
+def calculateSF(data: pl.DataFrame, sf_bins: dict, gcsn: pl.DataFrame) -> pl.DataFrame:
     """
     Calculate the counts of the observed subsample and return
-    that dataframe needed for the selection function
+    that dataframe needed for the selection function. Is based off
+    of Gaia Catalog of Nearby Stars
 
     Parameters
     ----------
     data: pl.DataFrame
         DataFrame of the data. Must have columns for
         healpix, phot_g_mean_mag, g_rp
+
+    sf_bins: dict
+        Binning for the selection function. Needs to have the keys:
+        healpix, phot_g_mean_mag, g_rp. Here, healpix is the order to use,
+        phot_g_mean_mag is a list of [lower bound, upper bound, bin_width], and
+        g_rp is a list of [lower bound, upper bound, bin_width].
     
     sf_file: str
-        Path to the data for the selection function. If None, will default
-        to precomputed one.
+        Path to the data for Gaia Catalog of Nearby Stars. If None, will default
+        to default path.
     
     Returns
     -------
@@ -61,36 +68,51 @@ def calculateSF(data: pl.DataFrame, sf_file:str = None) -> pl.DataFrame:
         The k, n and km, nm values use to calculate the posterior
         of the probability of selecting a source in a bin
     """
-    if sf_file is None:
-        sf_file = open_binary('snc_sf.sf_files', '100pc_SF.csv').name
-    
-    with open(sf_file, 'r') as f:
-        subSF_mock_dict = ast.literal_eval(f.readline().strip("#").strip("\n"))
-    subSF_mock = pl.read_csv(sf_file, skip_rows=1)
-
-    subsamp = data.sql(query=f'''       
-                        WITH subsamp AS (
-                              SELECT
-                                healpix_,
-                                CAST(floor((phot_g_mean_mag - {subSF_mock_dict['phot_g_mean_mag'][0]}) / {subSF_mock_dict['phot_g_mean_mag'][2]}) AS int) AS phot_g_mean_mag_,
-                                CAST(floor(((g_rp) - {subSF_mock_dict['g_rp'][0]}) / {subSF_mock_dict['g_rp'][2]}) AS int) AS g_rp_
-                            FROM self
-                            WHERE g_rp > {subSF_mock_dict['g_rp'][0]}
-                                  AND g_rp < {subSF_mock_dict['g_rp'][1]}
-                                  AND phot_g_mean_mag > {subSF_mock_dict['phot_g_mean_mag'][0]}
-                                  AND phot_g_mean_mag < {subSF_mock_dict['phot_g_mean_mag'][1]}
-                        )
-                        SELECT 
-                            healpix_,
-                            phot_g_mean_mag_,
-                            g_rp_,
-                            COUNT(*) AS k
-                        FROM subsamp
-                        GROUP BY healpix_, phot_g_mean_mag_, g_rp_
-                        '''
+    sample = gcsn.sql(query=f'''       
+        WITH subsamp AS (
+                SELECT
+                healpix_,
+                CAST(floor((phot_g_mean_mag - {sf_bins['phot_g_mean_mag'][0]}) / {sf_bins['phot_g_mean_mag'][2]}) AS int) AS phot_g_mean_mag_,
+                CAST(floor(((g_rp) - {sf_bins['g_rp'][0]}) / {sf_bins['g_rp'][2]}) AS int) AS g_rp_
+            FROM self
+            WHERE g_rp > {sf_bins['g_rp'][0]}
+                    AND g_rp < {sf_bins['g_rp'][1]}
+                    AND phot_g_mean_mag > {sf_bins['phot_g_mean_mag'][0]}
+                    AND phot_g_mean_mag < {sf_bins['phot_g_mean_mag'][1]}
+        )
+        SELECT 
+            healpix_,
+            phot_g_mean_mag_,
+            g_rp_,
+            COUNT(*) AS n
+        FROM subsamp
+        GROUP BY healpix_, phot_g_mean_mag_, g_rp_
+        '''
                        )
 
-    subsamp = subsamp.join(subSF_mock, on=['healpix_', 'phot_g_mean_mag_', 'g_rp_'])
+    subsamp = data.sql(query=f'''       
+        WITH subsamp AS (
+                SELECT
+                healpix_,
+                CAST(floor((phot_g_mean_mag - {sf_bins['phot_g_mean_mag'][0]}) / {sf_bins['phot_g_mean_mag'][2]}) AS int) AS phot_g_mean_mag_,
+                CAST(floor(((g_rp) - {sf_bins['g_rp'][0]}) / {sf_bins['g_rp'][2]}) AS int) AS g_rp_
+            FROM self
+            WHERE g_rp > {sf_bins['g_rp'][0]}
+                    AND g_rp < {sf_bins['g_rp'][1]}
+                    AND phot_g_mean_mag > {sf_bins['phot_g_mean_mag'][0]}
+                    AND phot_g_mean_mag < {sf_bins['phot_g_mean_mag'][1]}
+        )
+        SELECT 
+            healpix_,
+            phot_g_mean_mag_,
+            g_rp_,
+            COUNT(*) AS k
+        FROM subsamp
+        GROUP BY healpix_, phot_g_mean_mag_, g_rp_
+        '''
+                       )
+
+    subsamp = subsamp.join(sample, on=['healpix_', 'phot_g_mean_mag_', 'g_rp_'])
     return subsamp
 
 
@@ -152,27 +174,19 @@ def cal_veff(coord: SkyCoord,
     return Veff
 
 
-def calc_subsample_p(km: np.ndarray | pl.Series,
-                     nm: np.ndarray | pl.Series,
-                     k: np.ndarray | pl.Series,
+def calc_subsample_p(k: np.ndarray | pl.Series,
                      n: np.ndarray | pl.Series,
                      RNG: np.random._generator.Generator = np.random.default_rng(666)) -> np.ndarray:
     """
     Calculate the probability of target being in a subsample
 
     Parameters
-    ----------
-    km: np.ndarray | pl.Series
-        The number of stars within 100 pc in a bin according to Gaia Mock catalog.
-    
-    nm: np.ndarray | pl.Series
-        The number of stars in a bin according to Gaia Mock catalog.
-    
+    ----------    
     k: np.ndarray | pl.Series
         The number of stars in a bin for the 100 pc subsample.
     
     n: np.ndarray | pl.Series
-        The number of stars in a bin in the Gaia catalog.
+        The number of stars in a bin in the Gaia Catalog of Nearby Stars.
     
     RNG: np.random._generator.Generator
             Random generator with some seed.
@@ -182,15 +196,9 @@ def calc_subsample_p(km: np.ndarray | pl.Series,
     pselect: np.ndarray
         The probability of selecting that star in the subsample.
     """
-    alpham = km + 1
-    betam = nm - km + 1
-    frac = RNG.beta(alpham, betam)
-
-    nf = np.round(n * frac)
-    nf[nf < k] = k[nf < k]
-
     alpha = k + 1
-    beta = nf - k + 1
+    beta = n - k + 1
+    beta[k > n] = 1
 
     pselect = np.zeros(len(beta)) + np.nan
     pselect[beta > 0] = RNG.beta(alpha[beta > 0], beta[beta > 0])

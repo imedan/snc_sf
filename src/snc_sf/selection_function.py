@@ -23,9 +23,15 @@ class SNCSelectionFunction(object):
         source_id, ra, ra_error, dec, dec_error, parallax, parallax_error,
         g_rp,  phot_g_mean_mag, phot_g_mean_flux_over_error
     
+    sf_bins: dict
+        Binning for the selection function. Needs to have the keys:
+        healpix, phot_g_mean_mag, g_rp. Here, healpix is the order to use,
+        phot_g_mean_mag is a list of [lower bound, upper bound, bin_width], and
+        g_rp is a list of [lower bound, upper bound, bin_width].
+    
     sf_file: str
-        Path to the data for the selection function. If None, will default
-        to precomputed one.
+        Path to the data for Gaia Catalog of Nearby Stars. If None, will default
+        to default path.
 
     G_lim: float
         Gaia G mag limit assumed.
@@ -45,9 +51,27 @@ class SNCSelectionFunction(object):
         The k, n and km, nm values use to calculate the posterior
         of the probability of selecting a source in a bin
     """
-    def __init__(self, data_file:str, sf_file:str = None, G_lim: float = 20):
+    def __init__(self, data_file:str, sf_bins: dict,
+                 sf_file:str = None, G_lim: float = 20):
+        # grab GCSN for SF
+        self.sf_bins = sf_bins
+        self.sf_file = sf_file
+        if self.sf_file is None:
+            self.sf_file = open_binary('snc_sf.sf_files', 'GCNS-result.csv').name
+        
+        self.gcsn = pl.read_csv(self.sf_file)
+        coord = SkyCoord(ra=np.array(self.gcsn['ra']) * u.deg,
+                        dec=np.array(self.gcsn['dec']) * u.deg,
+                        frame='icrs')
+        healpix = coord2healpix(coord,
+                                nside=2 ** sf_bins['healpix'])
+        self.gcsn = self.gcsn.with_columns(
+            healpix_=pl.Series(healpix),
+            g_rp=pl.col('phot_g_mean_mag') - pl.col('phot_rp_mean_mag'))
+
         # load the data
         self.data = pl.read_csv(data_file)
+        self.data = self.data.filter(np.isin(self.data['source_id'], self.gcsn['source_id']))
 
         # calculate error in G mag
         sigmaG_0 = 0.0027553202
@@ -62,33 +86,25 @@ class SNCSelectionFunction(object):
         
         self.G_lim = G_lim
 
-        # grab binning of SF
-        self.sf_file = sf_file
-        if self.sf_file is None:
-            self.sf_file = open_binary('snc_sf.sf_files', '100pc_SF.csv').name
-    
-        with open(self.sf_file, 'r') as f:
-            self.subSF_mock_dict = ast.literal_eval(f.readline().strip("#").strip("\n"))
-
         # add healpix index colum
         healpix = coord2healpix(self.coord,
-                                 nside=2 ** self.subSF_mock_dict['healpix'])
+                                 nside=2 ** self.sf_bins['healpix'])
         self.data = self.data.with_columns(healpix_=pl.Series(healpix))
 
         # add the indecies for the data
         phot_g_mean_mag_ = np.digitize(self.data['phot_g_mean_mag'],
-                                       np.arange(self.subSF_mock_dict['phot_g_mean_mag'][0],
-                                                 self.subSF_mock_dict['phot_g_mean_mag'][1],
-                                                 self.subSF_mock_dict['phot_g_mean_mag'][2])) - 1
+                                       np.arange(self.sf_bins['phot_g_mean_mag'][0],
+                                                 self.sf_bins['phot_g_mean_mag'][1],
+                                                 self.sf_bins['phot_g_mean_mag'][2])) - 1
 
         g_rp_ = np.digitize(self.data['g_rp'],
-                            np.arange(self.subSF_mock_dict['g_rp'][0],
-                                      self.subSF_mock_dict['g_rp'][1],
-                                      self.subSF_mock_dict['g_rp'][2])) - 1
+                            np.arange(self.sf_bins['g_rp'][0],
+                                      self.sf_bins['g_rp'][1],
+                                      self.sf_bins['g_rp'][2])) - 1
         self.data = self.data.with_columns(phot_g_mean_mag_=phot_g_mean_mag_, g_rp_=g_rp_)
 
         # calculate the subselection
-        self.subsamp = calculateSF(self.data, sf_file=self.sf_file)
+        self.subsamp = calculateSF(self.data, self.sf_bins, self.gcsn)
 
         # join to the subselection
         self.data = self.data.join(self.subsamp, on=['healpix_', 'phot_g_mean_mag_', 'g_rp_'], how='left')
@@ -123,7 +139,7 @@ class SNCSelectionFunction(object):
                 RNG.normal(self.data['parallax'],
                            self.data['parallax_error']),
                 self.coord.galactic.b.rad,
-                3,  # use larger order to estimate sky coverage
+                4,  # use larger order to estimate sky coverage
                 self.G_lim)
         Veff_samps[Veff_samps <= 0] = np.nan
         self.data = self.data.with_columns(Veff_samps=Veff_samps)
@@ -133,8 +149,6 @@ class SNCSelectionFunction(object):
         pselect_samps = np.zeros((len(self.data), nsamps))
         for i in range(nsamps):
             pselect_samps[:, i] = calc_subsample_p(
-                np.array(self.data['km']),
-                np.array(self.data['nm']),
                 np.array(self.data['k']),
                 np.array(self.data['n']),
                 RNG)
