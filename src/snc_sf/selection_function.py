@@ -60,8 +60,9 @@ class SNCSelectionFunction(object):
         self.sf_file = open_binary('snc_sf.sf_files', 'GCNS-result.csv').name
         
         self.gcsn = pl.read_csv(self.sf_file)
-        gcns = gcns.join(pl.read_csv(open_binary('snc_sf.sf_files', 'GNSC_distpdf.csv').name),
-                         left_on='source_id', right_on='GaiaEDR3')
+        self.gcns = self.gcns.join(
+            pl.read_csv(open_binary('snc_sf.sf_files', 'GNSC_distpdf.csv').name),
+            left_on='source_id', right_on='GaiaEDR3')
 
         self.coord_gcns = SkyCoord(ra=np.array(self.gcsn['ra']) * u.deg,
                                    dec=np.array(self.gcsn['dec']) * u.deg,
