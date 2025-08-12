@@ -5,6 +5,7 @@ import numpy as np
 import polars as pl
 from importlib.resources import open_binary
 import ast
+from scipy.sparse import coo_matrix
 
 
 def coord2healpix(coord: SkyCoord, nside: int, nest: bool = True) -> np.ndarray:
@@ -245,3 +246,67 @@ def calc_1d_index(bin_idx: list,
         valid &= bin_idx[i] < ns[i]
     
     return idx_1d, valid, max_idx
+
+
+def build_effective_sel_factor(model_idx: np.ndarray,
+                               sf_idx: np.ndarray,
+                               SF_vals: np.ndarray,
+                               vmax: np.ndarray,
+                               max_model_idx: int,
+                               max_sf_idx: int) -> np.ndarray:
+    """
+    Calculate the sparse matrix of weights used to calculate the
+    normalizing factor for the forward model
+
+    Parameters
+    -----------
+    model_idx: np.ndarray
+        1D flattened indexes for the GCNS data. These indexes are
+        for the grid you are forward modeling the number
+        densities onto
+    
+    sf_idx: np.ndarray
+        1D flattened indexes for the GCNS data. These indexes are
+        for the grid the selection function is calculated onto.
+
+    SF_vals: np.ndarray
+        The selection function probabilities of the observed data
+        for the GCNS data.
+    
+    vmax: np.ndarray
+        The maximum volume for the GCNS data.
+    
+    max_model_idx: int
+        Maximum index possible in model_idx.
+    
+    max_sf_idx: int
+        Maximum index possible in sf_idx.
+
+    Returns
+    -------
+    A_j: np.ndarray
+        The effective selection factor used to normalize the
+        log probability.
+    """
+    # build the sparse counts matrix N_jk weighted by max volume
+    datai = 1 / vmax
+    N_jk_sparse = coo_matrix((datai, (model_idx, sf_idx_idx)),
+                             shape=(max_model_idx, max_sf_idx))
+
+    # Convert to CSR for efficient row operations
+    N_jk_csr = N_jk_sparse.tocsr()
+    # rows sums to row normalize
+    row_sums = np.array(N_jk_csr.sum(axis=1)).flatten()
+
+    # get the SF values for each index
+    S_k = np.zeros(max_k)
+    S_k[sf_idx] = SF_vals
+
+    # get the effective selection factor for each model index
+    num = np.array(N_jk_csr.dot(S_k))
+    # need to avoid division by 0
+    A_j = np.zeros_like(num)
+    mask = row_sums > 0
+    A_j[mask] = num[mask] / row_sums[mask]
+    return A_j
+    
