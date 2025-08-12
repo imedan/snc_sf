@@ -281,6 +281,7 @@ def build_effective_sel_factor(model_idx: np.ndarray,
     """
     # build the sparse counts matrix N_jk weighted by max volume
     datai = 1 / vmax
+    datai[~np.isfinite(datai)] = 0.
     N_jk_sparse = coo_matrix((datai, (model_idx, sf_idx_idx)),
                              shape=(max_model_idx, max_sf_idx))
 
