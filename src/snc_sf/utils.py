@@ -74,8 +74,8 @@ def calculateSF(data: pl.DataFrame, sf_bins: dict, gcsn: pl.DataFrame) -> pl.Dat
         WITH subsamp AS (
                 SELECT
                 healpix_,
-                CAST(floor((phot_g_mean_mag - {sf_bins['phot_g_mean_mag'][0]}) / {sf_bins['phot_g_mean_mag'][2]}) AS int) AS phot_g_mean_mag_,
-                CAST(floor(((g_rp) - {sf_bins['g_rp'][0]}) / {sf_bins['g_rp'][2]}) AS int) AS g_rp_
+                phot_g_mean_mag_,
+                g_rp_
             FROM self
             WHERE g_rp > {sf_bins['g_rp'][0]}
                     AND g_rp < {sf_bins['g_rp'][1]}
@@ -96,8 +96,8 @@ def calculateSF(data: pl.DataFrame, sf_bins: dict, gcsn: pl.DataFrame) -> pl.Dat
         WITH subsamp AS (
                 SELECT
                 healpix_,
-                CAST(floor((phot_g_mean_mag - {sf_bins['phot_g_mean_mag'][0]}) / {sf_bins['phot_g_mean_mag'][2]}) AS int) AS phot_g_mean_mag_,
-                CAST(floor(((g_rp) - {sf_bins['g_rp'][0]}) / {sf_bins['g_rp'][2]}) AS int) AS g_rp_
+                phot_g_mean_mag_,
+                g_rp_
             FROM self
             WHERE g_rp > {sf_bins['g_rp'][0]}
                     AND g_rp < {sf_bins['g_rp'][1]}
@@ -114,7 +114,8 @@ def calculateSF(data: pl.DataFrame, sf_bins: dict, gcsn: pl.DataFrame) -> pl.Dat
         '''
                        )
 
-    subsamp = subsamp.join(sample, on=['healpix_', 'phot_g_mean_mag_', 'g_rp_'])
+    subsamp = sample.join(subsamp, on=['healpix_', 'phot_g_mean_mag_', 'g_rp_'],
+                          how='left')
     return subsamp
 
 
