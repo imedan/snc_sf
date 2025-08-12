@@ -228,7 +228,7 @@ def calc_1d_index(bin_idx: list,
     """
     ns = np.array([be if isinstance(be, int) else len(be) - 1 for be in bin_edges])
 
-    idx_1d = np.zeros(len(bin_idx[0]))
+    idx_1d = np.zeros(len(bin_idx[0]), dtype=int)
     for i in range(len(bin_idx)):
         idx_1d += bin_idx[i] * np.prod(ns[i + 1:])
     
@@ -285,7 +285,7 @@ def build_effective_sel_factor(model_idx: np.ndarray,
     # build the sparse counts matrix N_jk weighted by max volume
     datai = 1 / vmax
     datai[~np.isfinite(datai)] = 0.
-    N_jk_sparse = coo_matrix((datai, (model_idx, sf_idx_idx)),
+    N_jk_sparse = coo_matrix((datai, (model_idx, sf_idx)),
                              shape=(max_model_idx, max_sf_idx))
 
     # Convert to CSR for efficient row operations
@@ -294,7 +294,7 @@ def build_effective_sel_factor(model_idx: np.ndarray,
     row_sums = np.array(N_jk_csr.sum(axis=1)).flatten()
 
     # get the SF values for each index
-    S_k = np.zeros(max_k)
+    S_k = np.zeros(max_sf_idx)
     S_k[sf_idx] = SF_vals
 
     # get the effective selection factor for each model index
