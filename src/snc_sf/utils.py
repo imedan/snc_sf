@@ -203,3 +203,45 @@ def calc_subsample_p(k: np.ndarray | pl.Series,
     pselect = np.zeros(len(beta)) + np.nan
     pselect[beta > 0] = RNG.beta(alpha[beta > 0], beta[beta > 0])
     return pselect
+
+
+def calc_1d_index(bin_idx: list,
+                  bin_edges: list) -> Tuple[np.ndarray, np.ndarray, float]:
+    """
+    For a ND binning, calculate the flattened 1D indexes
+
+    Parameters
+    ----------
+    bin_idx: list
+        List of of the digitized indexes of the data. Each index of list
+        should be np.array.
+
+    bin_edges: list
+        List of the bin edges or simply the number of bins in the
+        array for each dimension minus 1.
+
+    Returns
+    -------
+    idx_1d: np.ndarray
+        The flattened 1D index for the data
+    
+    valid: np.ndarray
+        If the index is valid within the gridding
+
+    max_idx: float
+        The maximum size index of the flattened 1D index
+    """
+    ns = np.array([be if isinstance(be, int) else len(be) - 1 for be in bin_edges])
+
+    idx_1d = np.zeros(len(bin_idx[0]))
+    for i in range(len(bin_idx)):
+        idx_1d += bin_idx[i] * np.prod(ns[i + 1:])
+    
+    max_idx = np.prod(ns)
+
+    valid = np.ones(len(bin_idx[0]), dtype=bool)
+    for i in range(len(bin_idx)):
+        valid &= bin_idx[i] >= 0
+        valid &= bin_idx[i] < ns[i]
+    
+    return idx_1d, valid, max_idx
