@@ -115,6 +115,18 @@ class SNCSelectionFunction(object):
                                       self.sf_bins['g_rp'][2])) - 1
         self.data = self.data.with_columns(phot_g_mean_mag_=phot_g_mean_mag_, g_rp_=g_rp_)
 
+        # add the indecies for the GCNS
+        phot_g_mean_mag_ = np.digitize(self.gcns['phot_g_mean_mag'],
+                                       np.arange(self.sf_bins['phot_g_mean_mag'][0],
+                                                 self.sf_bins['phot_g_mean_mag'][1],
+                                                 self.sf_bins['phot_g_mean_mag'][2])) - 1
+
+        g_rp_ = np.digitize(self.gcns['g_rp'],
+                            np.arange(self.sf_bins['g_rp'][0],
+                                      self.sf_bins['g_rp'][1],
+                                      self.sf_bins['g_rp'][2])) - 1
+        self.gcns = self.gcns.with_columns(phot_g_mean_mag_=phot_g_mean_mag_, g_rp_=g_rp_)
+
         # calculate the subselection
         self.subsamp = calculateSF(self.data, self.sf_bins, self.gcns)
         self.subsamp = self.subsamp.with_columns(pl.col("k").fill_null(strategy="zero"))
@@ -153,7 +165,7 @@ class SNCSelectionFunction(object):
         for i in range(nsamps):
             Veff_samps[:, i] = cal_veff(
                 self.gcns['phot_g_mean_mag'].to_numpy(),
-                1 / self.gcns[f'Dist{nsamps + 1}'].to_numpy(),
+                1 / self.gcns[f'Dist{i + 1}'].to_numpy(),
                 self.coord_gcns.galactic.b.rad,
                 self.sf_bins['healpix'],
                 self.gcns['maglim'].to_numpy())
