@@ -1,5 +1,6 @@
 from astropy.coordinates import SkyCoord
 import astropy.units as u
+from astropy.io import fits
 import healpy as hp
 import numpy as np
 import polars as pl
@@ -28,13 +29,12 @@ class SNCSelectionFunction(object):
         healpix, phot_g_mean_mag, g_rp. Here, healpix is the order to use,
         phot_g_mean_mag is a list of [lower bound, upper bound, bin_width], and
         g_rp is a list of [lower bound, upper bound, bin_width].
-    
-    sf_file: str
-        Path to the data for Gaia Catalog of Nearby Stars. If None, will default
-        to default path.
 
     G_lim: float
         Gaia G mag limit assumed.
+
+    RNG: np.random._generator.Generator
+            Random generator with some seed.
 
     Attributes
     ----------
@@ -52,22 +52,33 @@ class SNCSelectionFunction(object):
         of the probability of selecting a source in a bin
     """
     def __init__(self, data_file:str, sf_bins: dict,
-                 sf_file:str = None, G_lim: float = 20):
+                 G_lim: float = 20,
+                 RNG: np.random._generator.Generator = np.random.default_rng(666)):
+        self.RNG = RNG
         # grab GCSN for SF
         self.sf_bins = sf_bins
-        self.sf_file = sf_file
-        if self.sf_file is None:
-            self.sf_file = open_binary('snc_sf.sf_files', 'GCNS-result.csv').name
+        self.sf_file = open_binary('snc_sf.sf_files', 'GCNS-result.csv').name
         
         self.gcsn = pl.read_csv(self.sf_file)
-        coord = SkyCoord(ra=np.array(self.gcsn['ra']) * u.deg,
-                        dec=np.array(self.gcsn['dec']) * u.deg,
-                        frame='icrs')
-        healpix = coord2healpix(coord,
+        gcns = gcns.join(pl.read_csv(open_binary('snc_sf.sf_files', 'GNSC_distpdf.csv').name),
+                         left_on='source_id', right_on='GaiaEDR3')
+
+        self.coord_gcns = SkyCoord(ra=np.array(self.gcsn['ra']) * u.deg,
+                                   dec=np.array(self.gcsn['dec']) * u.deg,
+                                   frame='icrs')
+        healpix = coord2healpix(self.coord_gcns,
                                 nside=2 ** sf_bins['healpix'])
         self.gcsn = self.gcsn.with_columns(
             healpix_=pl.Series(healpix),
             g_rp=pl.col('phot_g_mean_mag') - pl.col('phot_rp_mean_mag'))
+        
+        # get the Glim for GCNS
+        healpix_5 = coord2healpix(self.coord_gcns,
+                                  nside=2 ** 5)
+        self.gcns = self.gcns.with_columns(healpix_5=pl.Series(healpix_5))
+        maglim = fits.open(open_binary('snc_sf.sf_files', 'GCNS_healpix_maglim.fit').name)[1].data
+        self.gcns = self.gcns.join(pl.DataFrame({'healpix_5': np.arange(hp.order2npix(5)), 'maglim': maglim['mag80']}),
+                                   on='healpix_5', how='left')
 
         # load the data
         self.data = pl.read_csv(data_file)
@@ -105,9 +116,18 @@ class SNCSelectionFunction(object):
 
         # calculate the subselection
         self.subsamp = calculateSF(self.data, self.sf_bins, self.gcsn)
+        self.subsamp = self.subsamp.with_columns(pl.col("k").fill_null(strategy="zero"))
+
+        # get posterior samples
+        self.sample_posterior()
 
         # join to the subselection
-        self.data = self.data.join(self.subsamp, on=['healpix_', 'phot_g_mean_mag_', 'g_rp_'], how='left')
+        self.data = self.data.join(self.subsamp,
+                                   on=['healpix_', 'phot_g_mean_mag_', 'g_rp_'],
+                                   how='left')
+        self.gcns = self.gcns.join(self.subsamp, 
+                                   on=['healpix_', 'phot_g_mean_mag_', 'g_rp_'],
+                                   how='left')
 
         # get the emperical Gaia DR3 selection function
         mapHpx7 = DR3SelectionFunctionTCG()
@@ -115,8 +135,7 @@ class SNCSelectionFunction(object):
                                      np.array(self.data['phot_g_mean_mag']))
         self.data = self.data.with_columns(completeness=completeness)
 
-    def sample_posterior(self, nsamps: int,
-                         RNG: np.random._generator.Generator = np.random.default_rng(666)):
+    def sample_posterior(self):
         """
         Sample the posterior of the subsample section function
 
@@ -124,35 +143,31 @@ class SNCSelectionFunction(object):
         ---------
         nsamps: int
             Number of samples to return.
-        
-        RNG: np.random._generator.Generator
-            Random generator with some seed.
         """
+        # nsamps from GCNS
+        nsamps = 99
+
         # get the effective volume samples
-        Veff_samps = np.zeros((len(self.data), nsamps))
+        Veff_samps = np.zeros((len(self.gcsn), nsamps))
         for i in range(nsamps):
-            idx = RNG.choice(len(self.coord), len(self.coord))
             Veff_samps[:, i] = cal_veff(
-                self.coord[idx],
-                RNG.normal(self.data['phot_g_mean_mag'],
-                           self.data['phot_g_mean_mag_error']),
-                RNG.normal(self.data['parallax'],
-                           self.data['parallax_error']),
-                self.coord.galactic.b.rad,
-                4,  # use larger order to estimate sky coverage
-                self.G_lim)
-        Veff_samps[Veff_samps <= 0] = np.nan
-        self.data = self.data.with_columns(Veff_samps=Veff_samps)
+                self.gcns['phot_g_mean_mag'].to_numpy(),
+                1 / self.gcns[f'Dist{nsamps + 1}'].to_numpy(),
+                self.coord_gcns.galactic.b.rad,
+                self.sf_bins['healpix'],
+                self.gcns['maglim'].to_numpy())
+        Veff_samps[Veff_samps <= 0] = 0.
+        self.gcns = self.gcns.with_columns(Veff_samps=Veff_samps)
         del Veff_samps
 
         # get the posterior samples for the subsample selection
-        pselect_samps = np.zeros((len(self.data), nsamps))
+        pselect_samps = np.zeros((len(self.subsamp), nsamps))
         for i in range(nsamps):
             pselect_samps[:, i] = calc_subsample_p(
-                np.array(self.data['k']),
-                np.array(self.data['n']),
-                RNG)
-        self.data = self.data.with_columns(pselect_samps=pselect_samps)
+                self.subsamp['k'].to_numpy(),
+                self.subsamp['n'].to_numpy(),
+                self.RNG)
+        self.subsamp = self.subsamp.with_columns(pselect_samps=pselect_samps)
         del pselect_samps
 
         # save number of samples for posterior
