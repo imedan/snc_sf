@@ -71,7 +71,8 @@ class SNCSelectionFunction(object):
                                 nside=2 ** sf_bins['healpix'])
         self.gcns = self.gcns.with_columns(
             healpix_=pl.Series(healpix),
-            g_rp=pl.col('phot_g_mean_mag') - pl.col('phot_rp_mean_mag'))
+            g_rp=pl.col('phot_g_mean_mag') - pl.col('phot_rp_mean_mag'),
+            MG=pl.col('phot_g_mean_mag') + 5 * np.log10(1e-3 * pl.col('parallax')) + 5)
         
         # get the Glim for GCNS
         healpix_5 = coord2healpix(self.coord_gcns,
@@ -101,7 +102,9 @@ class SNCSelectionFunction(object):
         # add healpix index colum
         healpix = coord2healpix(self.coord,
                                  nside=2 ** self.sf_bins['healpix'])
-        self.data = self.data.with_columns(healpix_=pl.Series(healpix))
+        self.data = self.data.with_columns(
+            healpix_=pl.Series(healpix),
+            MG=pl.col('phot_g_mean_mag') + 5 * np.log10(1e-3 * pl.col('parallax')) + 5)
 
         # add the indecies for the data
         phot_g_mean_mag_ = np.digitize(self.data['phot_g_mean_mag'],
