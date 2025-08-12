@@ -55,21 +55,21 @@ class SNCSelectionFunction(object):
                  G_lim: float = 20,
                  RNG: np.random._generator.Generator = np.random.default_rng(666)):
         self.RNG = RNG
-        # grab GCSN for SF
+        # grab GCNS for SF
         self.sf_bins = sf_bins
         self.sf_file = open_binary('snc_sf.sf_files', 'GCNS-result.csv').name
         
-        self.gcsn = pl.read_csv(self.sf_file)
+        self.gcns = pl.read_csv(self.sf_file)
         self.gcns = self.gcns.join(
             pl.read_csv(open_binary('snc_sf.sf_files', 'GNSC_distpdf.csv').name),
             left_on='source_id', right_on='GaiaEDR3')
 
-        self.coord_gcns = SkyCoord(ra=np.array(self.gcsn['ra']) * u.deg,
-                                   dec=np.array(self.gcsn['dec']) * u.deg,
+        self.coord_gcns = SkyCoord(ra=np.array(self.gcns['ra']) * u.deg,
+                                   dec=np.array(self.gcns['dec']) * u.deg,
                                    frame='icrs')
         healpix = coord2healpix(self.coord_gcns,
                                 nside=2 ** sf_bins['healpix'])
-        self.gcsn = self.gcsn.with_columns(
+        self.gcns = self.gcns.with_columns(
             healpix_=pl.Series(healpix),
             g_rp=pl.col('phot_g_mean_mag') - pl.col('phot_rp_mean_mag'))
         
@@ -83,7 +83,7 @@ class SNCSelectionFunction(object):
 
         # load the data
         self.data = pl.read_csv(data_file)
-        self.data = self.data.filter(np.isin(self.data['source_id'], self.gcsn['source_id']))
+        self.data = self.data.filter(np.isin(self.data['source_id'], self.gcns['source_id']))
 
         # calculate error in G mag
         sigmaG_0 = 0.0027553202
@@ -116,7 +116,7 @@ class SNCSelectionFunction(object):
         self.data = self.data.with_columns(phot_g_mean_mag_=phot_g_mean_mag_, g_rp_=g_rp_)
 
         # calculate the subselection
-        self.subsamp = calculateSF(self.data, self.sf_bins, self.gcsn)
+        self.subsamp = calculateSF(self.data, self.sf_bins, self.gcns)
         self.subsamp = self.subsamp.with_columns(pl.col("k").fill_null(strategy="zero"))
 
         # get posterior samples
@@ -149,7 +149,7 @@ class SNCSelectionFunction(object):
         nsamps = 99
 
         # get the effective volume samples
-        Veff_samps = np.zeros((len(self.gcsn), nsamps))
+        Veff_samps = np.zeros((len(self.gcns), nsamps))
         for i in range(nsamps):
             Veff_samps[:, i] = cal_veff(
                 self.gcns['phot_g_mean_mag'].to_numpy(),
