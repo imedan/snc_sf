@@ -117,20 +117,16 @@ def calculateSF(data: pl.DataFrame, sf_bins: dict, gcsn: pl.DataFrame) -> pl.Dat
     return subsamp
 
 
-def cal_veff(coord: SkyCoord,
-             phot_g_mean_mag: np.ndarray | pl.Series,
+def cal_veff(phot_g_mean_mag: np.ndarray | pl.Series,
              parallax: np.ndarray | pl.Series,
              galb: np.ndarray | pl.Series,
              order: int,
-             G_lim: float) -> np.ndarray | pl.Series:
+             G_lim: np.ndarray | pl.Series | float) -> np.ndarray | pl.Series:
     """
     Calculate the effective volume of the data
 
     Parameters
     ---------
-    coord: astropy.coordinates.SkyCoord
-        Astropy coordinates of the data
-    
     phot_g_mean_mag: np.ndarray | pl.Series
         Gaia G mag of the data.
     
@@ -143,7 +139,7 @@ def cal_veff(coord: SkyCoord,
     order: int
         Healpix order for estimating the sky coverage
     
-    G_lim: float
+    G_lim: np.ndarray | pl.Series | float
         The limiting magnitude assumed.
     
     Returns
@@ -152,14 +148,7 @@ def cal_veff(coord: SkyCoord,
         The effective volume of the data in pc^3
     """
     # get solid angle approximation in bins of magntiude
-    Gbins = np.arange(2.5, 22.5, 2.5)
-    solid_ang = np.zeros(len(phot_g_mean_mag))
-    for i in range(len(Gbins) - 1):
-        evG = (phot_g_mean_mag > Gbins[i]) & (phot_g_mean_mag <= Gbins[i + 1])
-        healpix = coord2healpix(coord[evG],
-                                nside=2 ** order)
-        solid_ang[evG] = 4 * np.pi * len(np.unique(healpix)) / hp.order2npix(order)
-
+    solid_ang = hp.nside2pixarea(2 ** order)
     MG = phot_g_mean_mag + 5 * np.log10(1e-3 * parallax) + 5
 
     dmax = 10 ** ((G_lim - MG) / 5 + 1)
@@ -170,6 +159,8 @@ def cal_veff(coord: SkyCoord,
     zeta = dmax * np.sin(abs(galb)) / H
 
     Veff = solid_ang * (H / abs(np.sin(galb))) ** 3 * (2 - (zeta ** 2 + 2 * zeta + 2) * np.exp(-zeta))
+    # do not contribute where parallax < 10
+    Veff[parallax < 10] = 0.
     if isinstance(Veff, pl.Series):
        Veff = Veff.rename('Veff')
     return Veff
