@@ -6,6 +6,7 @@ import polars as pl
 from importlib.resources import open_binary
 import ast
 from scipy.sparse import coo_matrix
+from typing import Tuple
 
 
 def coord2healpix(coord: SkyCoord, nside: int, nest: bool = True) -> np.ndarray:
