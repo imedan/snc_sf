@@ -116,6 +116,7 @@ def calculateSF(data: pl.DataFrame, sf_bins: dict, gcsn: pl.DataFrame) -> pl.Dat
 
     subsamp = sample.join(subsamp, on=['healpix_', 'phot_g_mean_mag_', 'g_rp_'],
                           how='left')
+    subsamp = subsamp.with_columns(pl.col("k").fill_null(strategy="zero"))
     return subsamp
 
 

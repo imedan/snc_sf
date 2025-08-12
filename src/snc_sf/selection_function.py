@@ -129,7 +129,6 @@ class SNCSelectionFunction(object):
 
         # calculate the subselection
         self.subsamp = calculateSF(self.data, self.sf_bins, self.gcns)
-        self.subsamp = self.subsamp.with_columns(pl.col("k").fill_null(strategy="zero"))
 
         # get posterior samples
         self.sample_posterior()
