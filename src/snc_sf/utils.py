@@ -154,7 +154,7 @@ def cal_veff(phot_g_mean_mag: np.ndarray | pl.Series,
     """
     # get solid angle approximation in bins of magntiude
     if full_sky:
-        hpbins = np.unique(healpix)
+        hpbins = len(np.unique(healpix))
         solid_ang = hp.nside2pixarea(2 ** order) * hpbins
     else:
         solid_ang = hp.nside2pixarea(2 ** order)
