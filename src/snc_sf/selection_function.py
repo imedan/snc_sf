@@ -105,6 +105,11 @@ class SNCSelectionFunction(object):
         self.data = self.data.with_columns(
             healpix_=pl.Series(healpix),
             MG=pl.col('phot_g_mean_mag') + 5 * np.log10(1e-3 * pl.col('parallax')) + 5)
+        
+        # grab the distance posterior samples
+        cols = [f'Dist{i}' for i in range(1, 100)]
+        self.data = self.data.join(self.gcns[['source_id', 'maglim'] + cols],
+                                   on='source_id')
 
         # add the indecies for the data
         phot_g_mean_mag_ = np.digitize(self.data['phot_g_mean_mag'],
@@ -162,7 +167,7 @@ class SNCSelectionFunction(object):
         # nsamps from GCNS
         nsamps = 99
 
-        # get the effective volume samples
+        # get the effective volume samples for gcns
         Veff_samps = np.zeros((len(self.gcns), nsamps))
         for i in range(nsamps):
             Veff_samps[:, i] = cal_veff(
@@ -170,9 +175,25 @@ class SNCSelectionFunction(object):
                 1 / self.gcns[f'Dist{i + 1}'].to_numpy(),
                 self.coord_gcns.galactic.b.rad,
                 self.sf_bins['healpix'],
-                self.gcns['maglim'].to_numpy())
+                self.gcns['maglim'].to_numpy(),
+                self.gcns['healpix_'].to_numpy())
         Veff_samps[Veff_samps <= 0] = 0.
         self.gcns = self.gcns.with_columns(Veff_samps=Veff_samps)
+        del Veff_samps
+
+        # get the effective volume samples for data
+        Veff_samps = np.zeros((len(self.data), nsamps))
+        for i in range(nsamps):
+            Veff_samps[:, i] = cal_veff(
+                self.data['phot_g_mean_mag'].to_numpy(),
+                1 / self.data[f'Dist{i + 1}'].to_numpy(),
+                self.coord.galactic.b.rad,
+                self.sf_bins['healpix'],
+                self.data['maglim'].to_numpy(),
+                self.data['healpix_'].to_numpy(),
+                full_sky=True)
+        Veff_samps[Veff_samps <= 0] = 0.
+        self.data = self.data.with_columns(Veff_samps=Veff_samps)
         del Veff_samps
 
         # get the posterior samples for the subsample selection

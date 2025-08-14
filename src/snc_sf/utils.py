@@ -124,7 +124,9 @@ def cal_veff(phot_g_mean_mag: np.ndarray | pl.Series,
              parallax: np.ndarray | pl.Series,
              galb: np.ndarray | pl.Series,
              order: int,
-             G_lim: np.ndarray | pl.Series | float) -> np.ndarray | pl.Series:
+             G_lim: np.ndarray | pl.Series | float,
+             healpix: np.ndarray | pl.Series,
+             full_sky: bool = False) -> np.ndarray | pl.Series:
     """
     Calculate the effective volume of the data
 
@@ -151,7 +153,11 @@ def cal_veff(phot_g_mean_mag: np.ndarray | pl.Series,
         The effective volume of the data in pc^3
     """
     # get solid angle approximation in bins of magntiude
-    solid_ang = hp.nside2pixarea(2 ** order)
+    if full_sky:
+        hpbins = np.unique(healpix)
+        solid_ang = hp.nside2pixarea(2 ** order) * hpbins
+    else:
+        solid_ang = hp.nside2pixarea(2 ** order)
     MG = phot_g_mean_mag + 5 * np.log10(1e-3 * parallax) + 5
 
     dmax = 10 ** ((G_lim - MG) / 5 + 1)
