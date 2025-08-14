@@ -288,20 +288,14 @@ def build_effective_sel_factor(model_idx: np.ndarray,
         The effective selection factor used to normalize the
         log probability.
     """
-    # build the sparse counts matrix N_jk weighted by max volume
-    datai = vmax
-    datai[~np.isfinite(datai)] = 0.
-    N_jk_sparse = coo_matrix((datai, (model_idx, sf_idx)),
+   # Weight by Vmax * selection function
+    datai = vmax * SF_vals
+
+    # Sparse matrix: rows=model bins, cols=SF bins
+    A_jk_sparse = coo_matrix((datai, (model_idx, sf_idx)),
                              shape=(max_model_idx, max_sf_idx))
 
     # Convert to CSR for efficient row operations
-    N_jk_csr = N_jk_sparse.tocsr()
-
-    # get the SF values for each index
-    S_k = np.zeros(max_sf_idx)
-    S_k[sf_idx] = SF_vals
-
-    # get the effective selection factor for each model index
-    A_j = np.array(N_jk_csr.dot(S_k))
-    return A_j
+    A_jk_csr = A_jk_sparse.tocsr()
+    return A_jk_csr
     
