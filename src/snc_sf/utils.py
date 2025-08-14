@@ -290,18 +290,12 @@ def build_effective_sel_factor(model_idx: np.ndarray,
 
     # Convert to CSR for efficient row operations
     N_jk_csr = N_jk_sparse.tocsr()
-    # rows sums to row normalize
-    row_sums = np.array(N_jk_csr.sum(axis=1)).flatten()
 
     # get the SF values for each index
     S_k = np.zeros(max_sf_idx)
     S_k[sf_idx] = SF_vals
 
     # get the effective selection factor for each model index
-    num = np.array(N_jk_csr.dot(S_k))
-    # need to avoid division by 0
-    A_j = np.zeros_like(num)
-    mask = row_sums > 0
-    A_j[mask] = num[mask] / row_sums[mask]
+    A_j = np.array(N_jk_csr.dot(S_k))
     return A_j
     
