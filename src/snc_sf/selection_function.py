@@ -191,7 +191,7 @@ class SNCSelectionFunction(object):
                 self.sf_bins['healpix'],
                 self.data['maglim'].to_numpy(),
                 self.data['healpix_'].to_numpy(),
-                full_sky=True)
+                full_sky=False)
         Veff_samps[Veff_samps <= 0] = 0.
         self.data = self.data.with_columns(Veff_samps=Veff_samps)
         del Veff_samps
