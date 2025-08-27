@@ -70,51 +70,43 @@ def calculateSF(data: pl.DataFrame, sf_bins: dict, gcsn: pl.DataFrame) -> pl.Dat
         The k, n and km, nm values use to calculate the posterior
         of the probability of selecting a source in a bin
     """
+    # columns to select
+    select_str = ''
+    for key in sf_bins.keys():
+        select_str += f'{key}_, '
+    select_str = select_str[:-2]
+
+    # the where statement
+    where_str = ''
+    for key in sf_bins.keys():
+        if key != 'healpix':
+            where_str += f'{key} > {sf_bins[key][0]} AND {key} < {sf_bins[key][1]} '
+
     sample = gcsn.sql(query=f'''       
         WITH subsamp AS (
-                SELECT
-                healpix_,
-                phot_g_mean_mag_,
-                g_rp_
+                SELECT {select_str}
             FROM self
-            WHERE g_rp > {sf_bins['g_rp'][0]}
-                    AND g_rp < {sf_bins['g_rp'][1]}
-                    AND phot_g_mean_mag > {sf_bins['phot_g_mean_mag'][0]}
-                    AND phot_g_mean_mag < {sf_bins['phot_g_mean_mag'][1]}
+            WHERE {where_str}
         )
-        SELECT 
-            healpix_,
-            phot_g_mean_mag_,
-            g_rp_,
-            COUNT(*) AS n
+        SELECT {select_str}, COUNT(*) AS n
         FROM subsamp
-        GROUP BY healpix_, phot_g_mean_mag_, g_rp_
+        GROUP BY {select_str}
         '''
                        )
 
     subsamp = data.sql(query=f'''       
         WITH subsamp AS (
-                SELECT
-                healpix_,
-                phot_g_mean_mag_,
-                g_rp_
+                SELECT {select_str}
             FROM self
-            WHERE g_rp > {sf_bins['g_rp'][0]}
-                    AND g_rp < {sf_bins['g_rp'][1]}
-                    AND phot_g_mean_mag > {sf_bins['phot_g_mean_mag'][0]}
-                    AND phot_g_mean_mag < {sf_bins['phot_g_mean_mag'][1]}
+            WHERE {where_str}
         )
-        SELECT 
-            healpix_,
-            phot_g_mean_mag_,
-            g_rp_,
-            COUNT(*) AS k
+        SELECT {select_str}, COUNT(*) AS k
         FROM subsamp
-        GROUP BY healpix_, phot_g_mean_mag_, g_rp_
+        GROUP BY {select_str}
         '''
                        )
 
-    subsamp = sample.join(subsamp, on=['healpix_', 'phot_g_mean_mag_', 'g_rp_'],
+    subsamp = sample.join(subsamp, on=[f'{key}_' for key in sf_bins.keys()],
                           how='left')
     subsamp = subsamp.with_columns(pl.col("k").fill_null(strategy="zero"))
     return subsamp

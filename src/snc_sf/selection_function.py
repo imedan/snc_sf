@@ -72,7 +72,8 @@ class SNCSelectionFunction(object):
         self.gcns = self.gcns.with_columns(
             healpix_=pl.Series(healpix),
             g_rp=pl.col('phot_g_mean_mag') - pl.col('phot_rp_mean_mag'),
-            MG=pl.col('phot_g_mean_mag') + 5 * np.log10(1e-3 * pl.col('parallax')) + 5)
+            MG=pl.col('phot_g_mean_mag') + 5 * np.log10(1e-3 * pl.col('parallax')) + 5,
+            log_parallax=np.log10(pl.col('parallax')))  # add this for binning
         
         # get the Glim for GCNS
         healpix_5 = coord2healpix(self.coord_gcns,
@@ -104,7 +105,8 @@ class SNCSelectionFunction(object):
                                  nside=2 ** self.sf_bins['healpix'])
         self.data = self.data.with_columns(
             healpix_=pl.Series(healpix),
-            MG=pl.col('phot_g_mean_mag') + 5 * np.log10(1e-3 * pl.col('parallax')) + 5)
+            MG=pl.col('phot_g_mean_mag') + 5 * np.log10(1e-3 * pl.col('parallax')) + 5,
+            log_parallax=np.log10(pl.col('parallax')))  # add this for binning)
         
         # grab the distance posterior samples
         cols = [f'Dist{i}' for i in range(1, 100)]
@@ -112,28 +114,22 @@ class SNCSelectionFunction(object):
                                    on='source_id')
 
         # add the indecies for the data
-        phot_g_mean_mag_ = np.digitize(self.data['phot_g_mean_mag'],
-                                       np.arange(self.sf_bins['phot_g_mean_mag'][0],
-                                                 self.sf_bins['phot_g_mean_mag'][1],
-                                                 self.sf_bins['phot_g_mean_mag'][2])) - 1
-
-        g_rp_ = np.digitize(self.data['g_rp'],
-                            np.arange(self.sf_bins['g_rp'][0],
-                                      self.sf_bins['g_rp'][1],
-                                      self.sf_bins['g_rp'][2])) - 1
-        self.data = self.data.with_columns(phot_g_mean_mag_=phot_g_mean_mag_, g_rp_=g_rp_)
+        for key in self.sf_bins.keys():
+            if key != 'healpix':
+                key_index = np.digitize(self.data[key],
+                                        np.arange(self.sf_bins[key][0],
+                                                  self.sf_bins[key][1],
+                                                  self.sf_bins[key][2])) - 1
+                self.data = self.data.with_columns(pl.Series(f'{key}_', key_index))
 
         # add the indecies for the GCNS
-        phot_g_mean_mag_ = np.digitize(self.gcns['phot_g_mean_mag'],
-                                       np.arange(self.sf_bins['phot_g_mean_mag'][0],
-                                                 self.sf_bins['phot_g_mean_mag'][1],
-                                                 self.sf_bins['phot_g_mean_mag'][2])) - 1
-
-        g_rp_ = np.digitize(self.gcns['g_rp'],
-                            np.arange(self.sf_bins['g_rp'][0],
-                                      self.sf_bins['g_rp'][1],
-                                      self.sf_bins['g_rp'][2])) - 1
-        self.gcns = self.gcns.with_columns(phot_g_mean_mag_=phot_g_mean_mag_, g_rp_=g_rp_)
+        for key in self.sf_bins.keys():
+            if key != 'healpix':
+                key_index = np.digitize(self.gcns[key],
+                                        np.arange(self.sf_bins[key][0],
+                                                  self.sf_bins[key][1],
+                                                  self.sf_bins[key][2])) - 1
+                self.gcns = self.gcns.with_columns(pl.Series(f'{key}_', key_index))
 
         # calculate the subselection
         self.subsamp = calculateSF(self.data, self.sf_bins, self.gcns)
@@ -143,10 +139,10 @@ class SNCSelectionFunction(object):
 
         # join to the subselection
         self.data = self.data.join(self.subsamp,
-                                   on=['healpix_', 'phot_g_mean_mag_', 'g_rp_'],
+                                   on=[f'{key}_' for key in self.sf_bins.keys()],
                                    how='left')
         self.gcns = self.gcns.join(self.subsamp, 
-                                   on=['healpix_', 'phot_g_mean_mag_', 'g_rp_'],
+                                   on=[f'{key}_' for key in self.sf_bins.keys()],
                                    how='left')
 
         # get the emperical Gaia DR3 selection function
