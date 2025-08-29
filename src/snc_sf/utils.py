@@ -80,7 +80,8 @@ def calculateSF(data: pl.DataFrame, sf_bins: dict, gcsn: pl.DataFrame) -> pl.Dat
     where_str = ''
     for key in sf_bins.keys():
         if key != 'healpix':
-            where_str += f'{key} > {sf_bins[key][0]} AND {key} < {sf_bins[key][1]} '
+            where_str += f'{key} > {sf_bins[key][0]} AND {key} < {sf_bins[key][1]} AND '
+    where_str = where_str[:-4]
 
     sample = gcsn.sql(query=f'''       
         WITH subsamp AS (
