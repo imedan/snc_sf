@@ -60,6 +60,7 @@ class SNCSelectionFunction(object):
                  RNG: np.random._generator.Generator = np.random.default_rng(666),
                  mean: bool = False):
         self.RNG = RNG
+        self.mean = mean
         # grab GCNS for SF
         self.sf_bins = sf_bins
         self.sf_file = open_binary('snc_sf.sf_files', 'GCNS-result.csv').name
