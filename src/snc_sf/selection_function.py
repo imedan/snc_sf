@@ -151,7 +151,7 @@ class SNCSelectionFunction(object):
                                      np.array(self.data['phot_g_mean_mag']))
         self.data = self.data.with_columns(completeness=completeness)
 
-    def sample_posterior(self):
+    def sample_posterior(self, mean=False):
         """
         Sample the posterior of the subsample section function
 
@@ -159,48 +159,90 @@ class SNCSelectionFunction(object):
         ---------
         nsamps: int
             Number of samples to return.
+        
+        mean: bool
+            If true, then only do one sample at the mean
+            of the distriubtion
         """
         # nsamps from GCNS
-        nsamps = 99
+        if mean:
+            nsamps = 1
+            # get the effective volume samples for gcns
+            Veff_samps = np.zeros((len(self.gcns), nsamps))
+            for i in range(nsamps):
+                Veff_samps[:, i] = cal_veff(
+                    self.gcns['phot_g_mean_mag'].to_numpy(),
+                    self.gcns['parallax'].to_numpy(),
+                    self.coord_gcns.galactic.b.rad,
+                    self.sf_bins['healpix'],
+                    self.gcns['maglim'].to_numpy(),
+                    self.gcns['healpix_'].to_numpy())
+            Veff_samps[Veff_samps <= 0] = 0.
+            self.gcns = self.gcns.with_columns(Veff_samps=Veff_samps)
+            del Veff_samps
 
-        # get the effective volume samples for gcns
-        Veff_samps = np.zeros((len(self.gcns), nsamps))
-        for i in range(nsamps):
-            Veff_samps[:, i] = cal_veff(
-                self.gcns['phot_g_mean_mag'].to_numpy(),
-                1 / self.gcns[f'Dist{i + 1}'].to_numpy(),
-                self.coord_gcns.galactic.b.rad,
-                self.sf_bins['healpix'],
-                self.gcns['maglim'].to_numpy(),
-                self.gcns['healpix_'].to_numpy())
-        Veff_samps[Veff_samps <= 0] = 0.
-        self.gcns = self.gcns.with_columns(Veff_samps=Veff_samps)
-        del Veff_samps
+            # get the effective volume samples for data
+            Veff_samps = np.zeros((len(self.data), nsamps))
+            for i in range(nsamps):
+                Veff_samps[:, i] = cal_veff(
+                    self.data['phot_g_mean_mag'].to_numpy(),
+                    self.data['parallax'].to_numpy(),
+                    self.coord.galactic.b.rad,
+                    self.sf_bins['healpix'],
+                    self.data['maglim'].to_numpy(),
+                    self.data['healpix_'].to_numpy(),
+                    full_sky=False)
+            Veff_samps[Veff_samps <= 0] = 0.
+            self.data = self.data.with_columns(Veff_samps=Veff_samps)
+            del Veff_samps
 
-        # get the effective volume samples for data
-        Veff_samps = np.zeros((len(self.data), nsamps))
-        for i in range(nsamps):
-            Veff_samps[:, i] = cal_veff(
-                self.data['phot_g_mean_mag'].to_numpy(),
-                1 / self.data[f'Dist{i + 1}'].to_numpy(),
-                self.coord.galactic.b.rad,
-                self.sf_bins['healpix'],
-                self.data['maglim'].to_numpy(),
-                self.data['healpix_'].to_numpy(),
-                full_sky=False)
-        Veff_samps[Veff_samps <= 0] = 0.
-        self.data = self.data.with_columns(Veff_samps=Veff_samps)
-        del Veff_samps
+            # get the posterior samples for the subsample selection
+            pselect_samps = np.zeros((len(self.subsamp), nsamps))
+            for i in range(nsamps):
+                pselect_samps[:, i] = (self.subsamp['k'].to_numpy() + 1) / \
+                                      (self.subsamp['n'].to_numpy() + 2)
+            self.subsamp = self.subsamp.with_columns(pselect_samps=pselect_samps)
+            del pselect_samps
+        else:
+            nsamps = 99
+            # get the effective volume samples for gcns
+            Veff_samps = np.zeros((len(self.gcns), nsamps))
+            for i in range(nsamps):
+                Veff_samps[:, i] = cal_veff(
+                    self.gcns['phot_g_mean_mag'].to_numpy(),
+                    1 / self.gcns[f'Dist{i + 1}'].to_numpy(),
+                    self.coord_gcns.galactic.b.rad,
+                    self.sf_bins['healpix'],
+                    self.gcns['maglim'].to_numpy(),
+                    self.gcns['healpix_'].to_numpy())
+            Veff_samps[Veff_samps <= 0] = 0.
+            self.gcns = self.gcns.with_columns(Veff_samps=Veff_samps)
+            del Veff_samps
 
-        # get the posterior samples for the subsample selection
-        pselect_samps = np.zeros((len(self.subsamp), nsamps))
-        for i in range(nsamps):
-            pselect_samps[:, i] = calc_subsample_p(
-                self.subsamp['k'].to_numpy(),
-                self.subsamp['n'].to_numpy(),
-                self.RNG)
-        self.subsamp = self.subsamp.with_columns(pselect_samps=pselect_samps)
-        del pselect_samps
+            # get the effective volume samples for data
+            Veff_samps = np.zeros((len(self.data), nsamps))
+            for i in range(nsamps):
+                Veff_samps[:, i] = cal_veff(
+                    self.data['phot_g_mean_mag'].to_numpy(),
+                    1 / self.data[f'Dist{i + 1}'].to_numpy(),
+                    self.coord.galactic.b.rad,
+                    self.sf_bins['healpix'],
+                    self.data['maglim'].to_numpy(),
+                    self.data['healpix_'].to_numpy(),
+                    full_sky=False)
+            Veff_samps[Veff_samps <= 0] = 0.
+            self.data = self.data.with_columns(Veff_samps=Veff_samps)
+            del Veff_samps
+
+            # get the posterior samples for the subsample selection
+            pselect_samps = np.zeros((len(self.subsamp), nsamps))
+            for i in range(nsamps):
+                pselect_samps[:, i] = calc_subsample_p(
+                    self.subsamp['k'].to_numpy(),
+                    self.subsamp['n'].to_numpy(),
+                    self.RNG)
+            self.subsamp = self.subsamp.with_columns(pselect_samps=pselect_samps)
+            del pselect_samps
 
         # save number of samples for posterior
         self.nsamps = nsamps
