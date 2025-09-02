@@ -36,6 +36,10 @@ class SNCSelectionFunction(object):
     RNG: np.random._generator.Generator
             Random generator with some seed.
 
+    mean: bool
+        If true, then only do one sample at the mean
+        of the distriubtion
+
     Attributes
     ----------
     data: pl.DataFrame
@@ -53,7 +57,8 @@ class SNCSelectionFunction(object):
     """
     def __init__(self, data_file:str, sf_bins: dict,
                  G_lim: float = 20,
-                 RNG: np.random._generator.Generator = np.random.default_rng(666)):
+                 RNG: np.random._generator.Generator = np.random.default_rng(666),
+                 mean: bool = False):
         self.RNG = RNG
         # grab GCNS for SF
         self.sf_bins = sf_bins
@@ -151,7 +156,7 @@ class SNCSelectionFunction(object):
                                      np.array(self.data['phot_g_mean_mag']))
         self.data = self.data.with_columns(completeness=completeness)
 
-    def sample_posterior(self, mean=False):
+    def sample_posterior(self):
         """
         Sample the posterior of the subsample section function
 
@@ -159,13 +164,9 @@ class SNCSelectionFunction(object):
         ---------
         nsamps: int
             Number of samples to return.
-        
-        mean: bool
-            If true, then only do one sample at the mean
-            of the distriubtion
         """
         # nsamps from GCNS
-        if mean:
+        if self.mean:
             nsamps = 1
             # get the effective volume samples for gcns
             Veff_samps = np.zeros((len(self.gcns), nsamps))
