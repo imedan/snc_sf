@@ -40,6 +40,9 @@ class SNCSelectionFunction(object):
         If true, then only do one sample at the mean
         of the distriubtion
 
+    calc_SF: bool
+        Calculate selection function when initializing
+
     Attributes
     ----------
     data: pl.DataFrame
@@ -58,7 +61,8 @@ class SNCSelectionFunction(object):
     def __init__(self, data_file:str, sf_bins: dict,
                  G_lim: float = 20,
                  RNG: np.random._generator.Generator = np.random.default_rng(666),
-                 mean: bool = False):
+                 mean: bool = False,
+                 calc_SF: bool = True):
         self.RNG = RNG
         self.mean = mean
         # grab GCNS for SF
@@ -137,6 +141,15 @@ class SNCSelectionFunction(object):
                                                   self.sf_bins[key][2])) - 1
                 self.gcns = self.gcns.with_columns(pl.Series(f'{key}_', key_index))
 
+        # calc the SF
+        if calc_SF:
+            self.calculate_selection_func()
+
+
+    def calculate_selection_func(self):
+        """
+        Now calculate the selection function for the data
+        """
         # calculate the subselection
         self.subsamp = calculateSF(self.data, self.sf_bins, self.gcns)
 
@@ -156,6 +169,7 @@ class SNCSelectionFunction(object):
         completeness = mapHpx7.query(self.coord,
                                      np.array(self.data['phot_g_mean_mag']))
         self.data = self.data.with_columns(completeness=completeness)
+
 
     def sample_posterior(self):
         """
