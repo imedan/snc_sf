@@ -80,32 +80,56 @@ def calculateSF(data: pl.DataFrame, sf_bins: dict, gcsn: pl.DataFrame) -> pl.Dat
     where_str = ''
     for key in sf_bins.keys():
         if key != 'healpix':
-            where_str += f'{key} > {sf_bins[key][0]} AND {key} < {sf_bins[key][1]} AND '
+            bins = np.arange(sf_bins[key][0], sf_bins[key][1], sf_bins[key][2])
+            where_str += f'{key} >= {bins.min()} AND {key} < {bins.max()} AND '
     where_str = where_str[:-4]
 
-    sample = gcsn.sql(query=f'''       
-        WITH subsamp AS (
-                SELECT {select_str}
-            FROM self
-            WHERE {where_str}
-        )
-        SELECT {select_str}, COUNT(*) AS n
-        FROM subsamp
-        GROUP BY {select_str}
-        '''
-                       )
+    if len(where_str) > 0:
+        sample = gcsn.sql(query=f'''       
+            WITH subsamp AS (
+                    SELECT {select_str}
+                FROM self
+                WHERE {where_str}
+            )
+            SELECT {select_str}, COUNT(*) AS n
+            FROM subsamp
+            GROUP BY {select_str}
+            '''
+                        )
 
-    subsamp = data.sql(query=f'''       
-        WITH subsamp AS (
-                SELECT {select_str}
-            FROM self
-            WHERE {where_str}
-        )
-        SELECT {select_str}, COUNT(*) AS k
-        FROM subsamp
-        GROUP BY {select_str}
-        '''
-                       )
+        subsamp = data.sql(query=f'''       
+            WITH subsamp AS (
+                    SELECT {select_str}
+                FROM self
+                WHERE {where_str}
+            )
+            SELECT {select_str}, COUNT(*) AS k
+            FROM subsamp
+            GROUP BY {select_str}
+            '''
+                        )
+    else:
+        sample = gcsn.sql(query=f'''       
+            WITH subsamp AS (
+                    SELECT {select_str}
+                FROM self
+            )
+            SELECT {select_str}, COUNT(*) AS n
+            FROM subsamp
+            GROUP BY {select_str}
+            '''
+                        )
+
+        subsamp = data.sql(query=f'''       
+            WITH subsamp AS (
+                    SELECT {select_str}
+                FROM self
+            )
+            SELECT {select_str}, COUNT(*) AS k
+            FROM subsamp
+            GROUP BY {select_str}
+            '''
+                        )
 
     subsamp = sample.join(subsamp, on=[f'{key}_' for key in sf_bins.keys()],
                           how='left')
@@ -227,9 +251,7 @@ def calc_1d_index(bin_idx: list,
     """
     ns = np.array([be if isinstance(be, int) else len(be) - 1 for be in bin_edges])
 
-    idx_1d = np.zeros(len(bin_idx[0]), dtype=int)
-    for i in range(len(bin_idx)):
-        idx_1d += bin_idx[i] * np.prod(ns[i + 1:])
+    idx_1d = np.ravel_multi_index(bin_idx, bin_edges, mode='clip')
     
     max_idx = np.prod(ns)
 
@@ -282,7 +304,7 @@ def build_effective_sel_factor(model_idx: np.ndarray,
         log probability.
     """
    # Weight by Vmax * selection function
-    datai = vmax * SF_vals
+    datai = SF_vals
 
     # Sparse matrix: rows=model bins, cols=SF bins
     A_jk_sparse = coo_matrix((datai, (model_idx, sf_idx)),
@@ -290,5 +312,18 @@ def build_effective_sel_factor(model_idx: np.ndarray,
 
     # Convert to CSR for efficient row operations
     A_jk_csr = A_jk_sparse.tocsr()
+
+    # below is code to do averaging. Don't think this is right
+    # # Also need counts per (model_idx, sf_idx) to compute averages
+    # ones = np.ones_like(datai, dtype=float)
+    # C_coo = coo_matrix((ones, (model_idx, sf_idx)),
+    #                     shape=(max_model_idx, max_sf_idx))
+
+    # # convert to CSR for efficient arithmetic
+    # C_csr = C_coo.tocsr().astype(float)
+
+    # with np.errstate(divide='ignore', invalid='ignore'):
+    #     A_jk_csr.data = A_jk_csr.data / C_csr.data
+
     return A_jk_csr
     
