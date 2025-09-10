@@ -265,8 +265,7 @@ def calc_1d_index(bin_idx: list,
 
 def build_effective_sel_factor(model_idx: np.ndarray,
                                sf_idx: np.ndarray,
-                               SF_vals: np.ndarray,
-                               vmax: np.ndarray,
+                               weights: np.ndarray,
                                max_model_idx: int,
                                max_sf_idx: int) -> np.ndarray:
     """
@@ -284,12 +283,11 @@ def build_effective_sel_factor(model_idx: np.ndarray,
         1D flattened indexes for the GCNS data. These indexes are
         for the grid the selection function is calculated onto.
 
-    SF_vals: np.ndarray
-        The selection function probabilities of the observed data
-        for the GCNS data.
-    
-    vmax: np.ndarray
-        The maximum volume for the GCNS data.
+    weights: np.ndarray
+        The weights to apply to the sparse matrix.
+        Could be, e.g. the selection function probabilities of
+        the observed data for the GCNS data, or some volume
+        weighting.
     
     max_model_idx: int
         Maximum index possible in model_idx.
@@ -303,27 +301,11 @@ def build_effective_sel_factor(model_idx: np.ndarray,
         The effective selection factor used to normalize the
         log probability.
     """
-   # Weight by Vmax * selection function
-    datai = SF_vals
-
     # Sparse matrix: rows=model bins, cols=SF bins
-    A_jk_sparse = coo_matrix((datai, (model_idx, sf_idx)),
+    A_jk_sparse = coo_matrix((weights, (model_idx, sf_idx)),
                              shape=(max_model_idx, max_sf_idx))
 
     # Convert to CSR for efficient row operations
     A_jk_csr = A_jk_sparse.tocsr()
-
-    # below is code to do averaging. Don't think this is right
-    # # Also need counts per (model_idx, sf_idx) to compute averages
-    # ones = np.ones_like(datai, dtype=float)
-    # C_coo = coo_matrix((ones, (model_idx, sf_idx)),
-    #                     shape=(max_model_idx, max_sf_idx))
-
-    # # convert to CSR for efficient arithmetic
-    # C_csr = C_coo.tocsr().astype(float)
-
-    # with np.errstate(divide='ignore', invalid='ignore'):
-    #     A_jk_csr.data = A_jk_csr.data / C_csr.data
-
     return A_jk_csr
     
