@@ -63,6 +63,30 @@ class SNCSelectionFunction(object):
     subsamp: pl.DataFrame
         The k, n and km, nm values use to calculate the posterior
         of the probability of selecting a source in a bin
+
+    idx_sel_gcns: np.array
+        flattened, 1D index of the GCNS for the selection function bins
+
+    valid_sel_gcns: np.array
+        If the 1D index of idx_sel_gcns is valid
+
+    max_idx_sel_gcns: int
+        maximum size of idx_sel_gcns
+    
+    idx_mod_gcns: np.array
+        flattened, 1D index of the GCNS for the forward model, HR diagram bins
+
+    valid_mod_gcns: np.array
+        If the 1D index of idx_mod_gcns is valid
+
+    max_idx_mod_gcns: int
+        maximum size of idx_mod_gcns
+    
+    gcns_valid: np.array
+        Where both idx_sel_gcns and idx_mod_gcns are valid
+    
+    A_jks: list
+        List of sparse arrays for effective selection factor matrix
     """
     def __init__(self, data_file:str, sf_bins: dict,
                  MG_bins: list,
