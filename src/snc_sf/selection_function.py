@@ -19,7 +19,10 @@ import numpyro
 import numpyro.distributions as dist
 from numpyro.infer import MCMC, NUTS
 from jax.scipy.special import logsumexp
-from jaxlib._jax import ArrayImpl
+try:
+    from jaxlib._jax import ArrayImpl
+except ModuleNotFoundError:
+    from jaxlib.xla_extension import ArrayImpl
 
 from .utils import (coord2healpix, calculateSF, cal_veff,
                     calc_subsample_p, calc_1d_index, build_effective_sel_factor)

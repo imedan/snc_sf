@@ -3,7 +3,10 @@ import jax.numpy as jnp
 from jax.scipy.special import logsumexp
 from jax.nn import sigmoid
 from jax.experimental.sparse import BCOO
-from jaxlib._jax import ArrayImpl
+try:
+    from jaxlib._jax import ArrayImpl
+except ModuleNotFoundError:
+    from jaxlib.xla_extension import ArrayImpl
 
 
 @jax.jit
