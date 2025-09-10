@@ -7,10 +7,23 @@ import polars as pl
 from importlib.resources import open_binary
 import ast
 from collections.abc import Callable
+from typing import Tuple
 from gaiaunlimited.selectionfunctions import DR3SelectionFunctionTCG
+
+import jax
+from jax.experimental.sparse import BCOO
+import jax.numpy as jnp
+import optax
+from jax.nn import sigmoid
+import numpyro
+import numpyro.distributions as dist
+from numpyro.infer import MCMC, NUTS
+from jax.scipy.special import logsumexp
+from jaxlib._jax import ArrayImpl
 
 from .utils import (coord2healpix, calculateSF, cal_veff,
                     calc_subsample_p, calc_1d_index, build_effective_sel_factor)
+from .optimize import sigmoid_inv, objective_jax_multi, compute_single_loglike
 
 
 class SNCSelectionFunction(object):
@@ -87,6 +100,9 @@ class SNCSelectionFunction(object):
     
     A_jks: list
         List of sparse arrays for effective selection factor matrix
+
+    weight_volume: bool
+        If A_jks are weighted by volume or not.
     """
     def __init__(self, data_file:str, sf_bins: dict,
                  MG_bins: list,
@@ -314,6 +330,7 @@ class SNCSelectionFunction(object):
             If to include Veff in the weighting for, e.g.
             number density evaluation
         """
+        self.weight_volume = weight_volume
         # do all the 1D flattened indexing
         bin_edges_sel = []
         for key in self.sf_bins.keys():
@@ -354,79 +371,126 @@ class SNCSelectionFunction(object):
             self.A_jks.append(Ajk)
 
 
-    def bootstrap_values(self,
-                         func: Callable,
-                         filt: pl.Expr = None,
-                         data_expr: list = [],
-                         args: tuple | list = ()) -> np.ndarray:
+    def forward_model(self,
+                      filter_data: pl.DataFrame) -> Tuple[ArrayImpl, ArrayImpl, np.ndarray]:
         """
-        Bootstrap some value from a function based on posterior samples
+        Perform the forward model to calculate the subpopulation probability
+        across the HR diagram for the GCNS
 
         Parameters
         ----------
-        func: function
-            Function to calculate some parameter for the bootstrap
-            based on the posterior samples from the selection function.
-            The first input must be 'weights', which is the weight applied to a star
-            defined as 1 / (Veff * pselect * completeness),
-            i.e. func(weights, *data_args, *args). Output of func
-            must be a float or np.ndarray.
-
-        filt: pl.Expr
-            Polars expression for the filter to be placed on the data
-            for the calculation
-        
-        data_expr: list
-            Additional data from the dataset to be used within func for the calculation.
-            Each index of the list should be a Polars expression. The code below will
-            turn this into a numpy array based on the filter, which is what will then
-            be passed to func as *data_args.
-        
-        args: list
-            Additional arguments to be passed to func, that are not data from the
-            dataset
+        filter_data: pl.DataFrame
+            The filtered dataset of self.data for the subpopulation
 
         Returns
-        -------
-        nboot: np.ndarray
-            The bootstrapped values of size (self.nsamps, N). Here N
-            depends on output from func. If output of func is array, nboot will be ND
-            with N being sahpe of output. Otherwise, nboot will be 1D array.
+        --------
+        p_warm: jaxlib._jax.ArrayImpl
+            The resulting HR diagram probability of the subpopulation from
+            the adam warmup. This is a 1D raveled array.
+
+        p_samples: jaxlib._jax.ArrayImpl
+            The resulting posterior samples of HR diagram probability of the
+            subpopulation from the MCMC. This is of shape (samples, 1D raveled index).
+
+        ev_valid: np.ndarray
+            Where in the filter data both selection function and model indexes
+            are valid.
         """
-        if filt is None:
-            filtered = self.data.filter()
-        else:
-            filtered = self.data.filter(filt)
-       
-        # test output to get size
-        pselect = filtered.select(pl.col("pselect_samps").arr.get(0)).to_numpy().reshape((-1, ))
-        Veff = filtered.select(pl.col("Veff_samps").arr.get(0)).to_numpy().reshape((-1, ))
-        completeness = filtered.select(pl.col("completeness")).to_numpy().reshape((-1,))
-        ev = np.isfinite(pselect) & np.isfinite(Veff) & np.isfinite(completeness)
-        idx = np.random.choice(np.sum(ev), np.sum(ev))
-        if len(data_expr) > 0:
-            data_args = tuple([filtered.select(de).to_numpy().reshape((-1, ))[ev][idx] for de in data_expr])
-        else:
-            data_args = ()
-        test_out = func(1 / (pselect[ev][idx] * Veff[ev][idx] * completeness[ev][idx]),
-                        *data_args, *args)
-
-        # create nboot with right shape
-        nboot_shape = [self.nsamps]
-        if isinstance(test_out, np.ndarray):
-            nboot_shape += list(test_out.shape)
-        nboot = np.zeros(nboot_shape)
-
-        # do the boostrap
-        for i in range(self.nsamps):
-            pselect = filtered.select(pl.col("pselect_samps").arr.get(i)).to_numpy().reshape((-1, ))
-            Veff = filtered.select(pl.col("Veff_samps").arr.get(i)).to_numpy().reshape((-1, ))
-            ev = np.isfinite(pselect) & np.isfinite(Veff) & np.isfinite(completeness)
-            idx = np.random.choice(np.sum(ev), np.sum(ev))
-            if len(data_expr) > 0:
-                data_args = tuple([filtered.select(de).to_numpy().reshape((-1, ))[ev][idx] for de in data_expr])
+       # do the indexing for the filtered data
+        bin_edges = []
+        for key in self.sf_bins.keys():
+            if key == 'healpix':
+                bin_edges.append(hp.order2npix(self.sf_bins['healpix']))
             else:
-                data_args = ()
-            nboot[i] = func(1 / (pselect[ev][idx] * Veff[ev][idx] * completeness[ev][idx]),
-                            *data_args, *args)
-        return nboot
+                bin_edges.append(len(np.arange(*self.sf_bins[key])) - 1)
+
+        bin_idx = [filter_data[f'{key}_'].to_numpy() for key in self.sf_bins.keys()]
+
+        idx_sel_data, valid_sel_data, max_idx_sel_data = calc_1d_index(bin_idx, bin_edges)
+
+        bin_edges = [len(np.arange(*self.sf_bins['g_rp'])) - 1,
+                     len(np.arange(*self.MG_bins)) - 1]
+
+        bin_idx = [filter_data['g_rp_'].to_numpy(),
+                   filter_data['MG_'].to_numpy()]
+
+        idx_mod_data, valid_mod_data, max_idx_mod_data = calc_1d_index(bin_idx, bin_edges)
+
+        # convert for jax and transpose for objective
+        A_jks_T_bcoo = tuple(BCOO.from_scipy_sparse(Ajk.T) for Ajk in self.A_jks)
+
+        ### OPTIMIZE ADAM ###
+        ev_valid = valid_sel_data & valid_mod_data
+        S_data = filter_data['pselect_samps'].to_numpy()[ev_valid]
+        Vmax_data = filter_data['Veff_samps'].to_numpy()[ev_valid]
+
+        # Prepare JAX arrays once
+        if self.weight_volume:
+            weights_data_j = jnp.asarray(S_data * Vmax_data)
+        else:
+            weights_data_j = jnp.asarray(S_data)
+        idx_mod_data_j = jnp.asarray(idx_mod_data[ev_valid], dtype=jnp.int32)
+        idx_sel_data_j = jnp.asarray(idx_sel_data[ev_valid], dtype=jnp.int32)
+
+
+        # starting point is the observed number density
+        p0 = np.zeros(max_idx_mod_data) + 0.01
+        p0 = jnp.array(p0)
+        theta_init = sigmoid_inv(p0)
+
+        # start with adam as a warmup to get closer to the right spot
+        learning_rate = 1e-2
+        num_adam_steps = 1000
+
+        optimizer = optax.adam(learning_rate)
+        opt_state = optimizer.init(theta_init)
+
+        @jax.jit
+        def step(theta, opt_state, weights_data_j, A_jks_T_bcoo, idx_mod_data_j):
+            loss, grads = jax.value_and_grad(objective_jax_multi)(theta, weights_data_j,
+                                                                  A_jks_T_bcoo, idx_mod_data_j)
+            updates, opt_state = optimizer.update(grads, opt_state)
+            theta = optax.apply_updates(theta, updates)
+            return theta, opt_state, loss
+
+        theta = theta_init
+        for i in range(num_adam_steps):
+            theta, opt_state, loss = step(theta, opt_state, weights_data_j,
+                                        A_jks_T_bcoo, idx_mod_data_j)
+            if i % 50 == 0:
+                print(f"Adam step {i}, loss={loss}")
+
+        # Use the warmed-up theta as LBFGS start
+        theta_init_warm = theta
+        p_warm = jnp.zeros(A_jks_T_bcoo[0].shape[1])
+        p_warm = p_warm.at[:].set(sigmoid(theta_init_warm))
+        
+        ### OPTIMIZE MCMC ###
+        def model(weights_data, A_jks_T_bcoo, idx_mod_data):
+            # Prior on transformed n
+            theta = numpyro.sample('theta', dist.Normal(theta_init_warm, 5.0))
+            p = jnp.zeros(A_jks_T_bcoo[0].shape[1])
+            p = p.at[:].set(sigmoid(theta))
+            
+            log_like_samples = []
+            for i in range(len(A_jks_T_bcoo)):
+                log_like_samples.append(compute_single_loglike(p, A_jks_T_bcoo[i],
+                                                               weights_data[:, i], idx_mod_data))
+            
+            log_like_samples = jnp.stack(log_like_samples)
+
+            log_like_samples = jnp.where(jnp.isfinite(log_like_samples), log_like_samples, -1e10)
+
+            log_like = logsumexp(log_like_samples) - jnp.log(len(A_jks_T_bcoo))
+            numpyro.factor("marginal_loglike", log_like)
+        
+        nuts_kernel = NUTS(model)
+        mcmc = MCMC(nuts_kernel, num_warmup=500, num_samples=2000)
+        mcmc.run(jax.random.PRNGKey(0), weights_data_j, A_jks_T_bcoo, idx_mod_data_j)
+        samples = mcmc.get_samples()
+
+        p_samples = jnp.zeros((samples['theta'].shape[0], A_jks_T_bcoo[0].shape[1]))
+        for i in range(samples['theta'].shape[0]):
+            p_samples = p_samples.at[:, i].set(sigmoid(samples['theta'][:, i]))
+        
+        return p_warm, p_samples, ev_valid
