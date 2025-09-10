@@ -3,10 +3,6 @@ import jax.numpy as jnp
 from jax.scipy.special import logsumexp
 from jax.nn import sigmoid
 from jax.experimental.sparse import BCOO
-import optax
-import numpyro
-import numpyro.distributions as dist
-from numpyro.infer import MCMC, NUTS
 from jaxlib._jax import ArrayImpl
 
 
