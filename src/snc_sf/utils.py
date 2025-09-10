@@ -301,9 +301,9 @@ def build_effective_sel_factor(model_idx: np.ndarray,
         The effective selection factor used to normalize the
         log probability.
     """
-    # Sparse matrix: rows=model bins, cols=SF bins
-    A_jk_sparse = coo_matrix((weights, (model_idx, sf_idx)),
-                             shape=(max_model_idx, max_sf_idx))
+    # Sparse matrix
+    A_jk_sparse = coo_matrix((weights, (sf_idx, model_idx)),
+                             shape=(max_sf_idx, max_model_idx))
 
     # Convert to CSR for efficient row operations
     A_jk_csr = A_jk_sparse.tocsr()

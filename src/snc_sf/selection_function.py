@@ -420,7 +420,7 @@ class SNCSelectionFunction(object):
         idx_mod_data, valid_mod_data, max_idx_mod_data = calc_1d_index(bin_idx, bin_edges)
 
         # convert for jax and transpose for objective
-        A_jks_T_bcoo = tuple(BCOO.from_scipy_sparse(Ajk.T) for Ajk in self.A_jks)
+        A_jks_bcoo = tuple(BCOO.from_scipy_sparse(Ajk) for Ajk in self.A_jks)
 
         ### OPTIMIZE ADAM ###
         ev_valid = valid_sel_data & valid_mod_data
@@ -449,9 +449,9 @@ class SNCSelectionFunction(object):
         opt_state = optimizer.init(theta_init)
 
         @jax.jit
-        def step(theta, opt_state, weights_data_j, A_jks_T_bcoo, idx_mod_data_j):
+        def step(theta, opt_state, weights_data_j, A_jks_bcoo, idx_mod_data_j):
             loss, grads = jax.value_and_grad(objective_jax_multi)(theta, weights_data_j,
-                                                                  A_jks_T_bcoo, idx_mod_data_j)
+                                                                  A_jks_bcoo, idx_mod_data_j)
             updates, opt_state = optimizer.update(grads, opt_state)
             theta = optax.apply_updates(theta, updates)
             return theta, opt_state, loss
@@ -459,40 +459,40 @@ class SNCSelectionFunction(object):
         theta = theta_init
         for i in range(num_adam_steps):
             theta, opt_state, loss = step(theta, opt_state, weights_data_j,
-                                        A_jks_T_bcoo, idx_mod_data_j)
+                                          A_jks_bcoo, idx_mod_data_j)
             if i % 50 == 0:
                 print(f"Adam step {i}, loss={loss}")
 
         # Use the warmed-up theta as LBFGS start
         theta_init_warm = theta
-        p_warm = jnp.zeros(A_jks_T_bcoo[0].shape[1])
+        p_warm = jnp.zeros(A_jks_bcoo[0].shape[1])
         p_warm = p_warm.at[:].set(sigmoid(theta_init_warm))
         
         ### OPTIMIZE MCMC ###
-        def model(weights_data, A_jks_T_bcoo, idx_mod_data):
+        def model(weights_data, A_jks_bcoo, idx_mod_data):
             # Prior on transformed n
             theta = numpyro.sample('theta', dist.Normal(theta_init_warm, 5.0))
-            p = jnp.zeros(A_jks_T_bcoo[0].shape[1])
+            p = jnp.zeros(A_jks_bcoo[0].shape[1])
             p = p.at[:].set(sigmoid(theta))
             
             log_like_samples = []
-            for i in range(len(A_jks_T_bcoo)):
-                log_like_samples.append(compute_single_loglike(p, A_jks_T_bcoo[i],
+            for i in range(len(A_jks_bcoo)):
+                log_like_samples.append(compute_single_loglike(p, A_jks_bcoo[i],
                                                                weights_data[:, i], idx_mod_data))
             
             log_like_samples = jnp.stack(log_like_samples)
 
             log_like_samples = jnp.where(jnp.isfinite(log_like_samples), log_like_samples, -1e10)
 
-            log_like = logsumexp(log_like_samples) - jnp.log(len(A_jks_T_bcoo))
+            log_like = logsumexp(log_like_samples) - jnp.log(len(A_jks_bcoo))
             numpyro.factor("marginal_loglike", log_like)
         
         nuts_kernel = NUTS(model)
         mcmc = MCMC(nuts_kernel, num_warmup=500, num_samples=2000)
-        mcmc.run(jax.random.PRNGKey(0), weights_data_j, A_jks_T_bcoo, idx_mod_data_j)
+        mcmc.run(jax.random.PRNGKey(0), weights_data_j, A_jks_bcoo, idx_mod_data_j)
         samples = mcmc.get_samples()
 
-        p_samples = jnp.zeros((samples['theta'].shape[0], A_jks_T_bcoo[0].shape[1]))
+        p_samples = jnp.zeros((samples['theta'].shape[0], A_jks_bcoo[0].shape[1]))
         for i in range(samples['theta'].shape[0]):
             p_samples = p_samples.at[:, i].set(sigmoid(samples['theta'][:, i]))
         

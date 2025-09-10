@@ -10,7 +10,7 @@ except ModuleNotFoundError:
 
 
 @jax.jit
-def compute_single_loglike(p: ArrayImpl, A_jk_T_bcoo: BCOO,
+def compute_single_loglike(p: ArrayImpl, A_jk_bcoo: BCOO,
                            S: ArrayImpl, idx_mod: ArrayImpl) -> float:
     """
     Compute the log likelihood for a single posterior draw
@@ -23,8 +23,8 @@ def compute_single_loglike(p: ArrayImpl, A_jk_T_bcoo: BCOO,
         across the HR diagram. This is a 1D array raveled
         from a 2D array of G - RP vs M_G
     
-    A_jk_T_bcoo: jax.experimental.sparse.BCOO
-        Transpose of sparse matrix of the sum of the selection function values
+    A_jk_bcoo: jax.experimental.sparse.BCOO
+        Sparse matrix of the sum of the selection function values
         for the intersection of each selection function bin with
         each HR diagram bin. Should be of shape
         (1D ravel of selection bins, 1D ravel of HR diagram bins)
@@ -41,7 +41,7 @@ def compute_single_loglike(p: ArrayImpl, A_jk_T_bcoo: BCOO,
     log_like: float
         The poisson point process log likelihood
     """
-    Z = A_jk_T_bcoo @ p
+    Z = A_jk_bcoo @ p
     mask = (S > 0)
     p_obs = p[idx_mod] * S
     safe_p_obs = jnp.where(mask, jnp.maximum(p_obs, 1e-300), 1.0)
@@ -51,7 +51,7 @@ def compute_single_loglike(p: ArrayImpl, A_jk_T_bcoo: BCOO,
     return log_like
 
 
-def objective_jax_multi(theta: ArrayImpl, S_data: ArrayImpl, A_jks_T_bcoo: tuple,
+def objective_jax_multi(theta: ArrayImpl, S_data: ArrayImpl, A_jks_bcoo: tuple,
                         idx_mod_data: ArrayImpl) -> float:
     """
     Compute the total log likelihood
@@ -67,8 +67,8 @@ def objective_jax_multi(theta: ArrayImpl, S_data: ArrayImpl, A_jks_T_bcoo: tuple
     S_data: jaxlib._jax.ArrayImpl
         Selection function values for the obserbed data in a subpopulation.
     
-    A_jks_T_bcoo: tuple
-        Transpose of sparse matrix of the sum of the selection function values
+    A_jks_bcoo: tuple
+        Sparse matrix of the sum of the selection function values
         for the intersection of each selection function bin with
         each HR diagram bin. Should be of shape
         (1D ravel of selection bins, 1D ravel of HR diagram bins). This should
@@ -87,14 +87,14 @@ def objective_jax_multi(theta: ArrayImpl, S_data: ArrayImpl, A_jks_T_bcoo: tuple
     p = jnp.nan_to_num(p, nan=0, posinf=1, neginf=0)
 
     log_like_samples = []
-    for i in range(len(A_jks_T_bcoo)):
-        log_like_samples.append(compute_single_loglike(p, A_jks_T_bcoo[i],
+    for i in range(len(A_jks_bcoo)):
+        log_like_samples.append(compute_single_loglike(p, A_jks_bcoo[i],
                                                        S_data[:, i], idx_mod_data))
     log_like_samples = jnp.stack(log_like_samples)
 
     log_like_samples = jnp.where(jnp.isfinite(log_like_samples), log_like_samples, -1e10)
 
-    neg_log_like = -1.0 * (logsumexp(log_like_samples) - jnp.log(len(A_jks_T_bcoo)))
+    neg_log_like = -1.0 * (logsumexp(log_like_samples) - jnp.log(len(A_jks_bcoo)))
     return neg_log_like
 
 
