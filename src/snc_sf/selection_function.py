@@ -9,7 +9,8 @@ import ast
 from collections.abc import Callable
 from gaiaunlimited.selectionfunctions import DR3SelectionFunctionTCG
 
-from .utils import coord2healpix, calculateSF, cal_veff, calc_subsample_p
+from .utils import (coord2healpix, calculateSF, cal_veff,
+                    calc_subsample_p, calc_1d_index, build_effective_sel_factor)
 
 
 class SNCSelectionFunction(object):
@@ -30,8 +31,10 @@ class SNCSelectionFunction(object):
         phot_g_mean_mag is a list of [lower bound, upper bound, bin_width], and
         g_rp is a list of [lower bound, upper bound, bin_width].
 
-    G_lim: float
-        Gaia G mag limit assumed.
+    MG_bins: list
+        MG binning of HR diagram to use for the forward model. Is 
+        list of [lower bound, upper bound, bin_width]. For g_rp bins, will use
+        the same as sf_bins.
 
     RNG: np.random._generator.Generator
             Random generator with some seed.
@@ -48,18 +51,21 @@ class SNCSelectionFunction(object):
     data: pl.DataFrame
         DataFrame of data_file.
 
+    gcns: pl.DataFrame
+        DataFrame of GCNS data.
+
     coord: astropy.coordinates.SkyCoord
         Coordinates of the data.
-    
-    subSF_mock_dict: dict
-        dict of the bins used for the subsample selection function
+
+    coord_gcns: astropy.coordinates.SkyCoord
+        Coordinates of GCNS data.
     
     subsamp: pl.DataFrame
         The k, n and km, nm values use to calculate the posterior
         of the probability of selecting a source in a bin
     """
     def __init__(self, data_file:str, sf_bins: dict,
-                 G_lim: float = 20,
+                 MG_bins: list,
                  RNG: np.random._generator.Generator = np.random.default_rng(666),
                  mean: bool = False,
                  calc_SF: bool = True):
@@ -67,6 +73,7 @@ class SNCSelectionFunction(object):
         self.mean = mean
         # grab GCNS for SF
         self.sf_bins = sf_bins
+        self.MG_bins = MG_bins
         self.sf_file = open_binary('snc_sf.sf_files', 'GCNS-result.csv').name
         
         self.gcns = pl.read_csv(self.sf_file)
@@ -107,8 +114,6 @@ class SNCSelectionFunction(object):
                               dec=np.array(self.data['dec']) * u.deg,
                               distance=np.array(1000 / self.data['parallax']) * u.pc,
                               frame='icrs')
-        
-        self.G_lim = G_lim
 
         # add healpix index colum
         healpix = coord2healpix(self.coord,
@@ -127,19 +132,21 @@ class SNCSelectionFunction(object):
         for key in self.sf_bins.keys():
             if key != 'healpix':
                 key_index = np.digitize(self.data[key],
-                                        np.arange(self.sf_bins[key][0],
-                                                  self.sf_bins[key][1],
-                                                  self.sf_bins[key][2])) - 1
+                                        np.arange(*self.sf_bins[key])) - 1
                 self.data = self.data.with_columns(pl.Series(f'{key}_', key_index))
+
+        MG_ = np.digitize(self.data['MG'], np.arange(*self.MG_bins)) - 1
+        self.data = self.data.with_columns(MG_=MG_)
 
         # add the indecies for the GCNS
         for key in self.sf_bins.keys():
             if key != 'healpix':
                 key_index = np.digitize(self.gcns[key],
-                                        np.arange(self.sf_bins[key][0],
-                                                  self.sf_bins[key][1],
-                                                  self.sf_bins[key][2])) - 1
+                                        np.arange(*self.sf_bins[key])) - 1
                 self.gcns = self.gcns.with_columns(pl.Series(f'{key}_', key_index))
+
+        MG_ = np.digitize(self.gcns['MG'], np.arange(*self.MG_bins)) - 1
+        self.gcns = self.gcns.with_columns(MG_=MG_)
 
         # calc the SF
         if calc_SF:
@@ -163,6 +170,14 @@ class SNCSelectionFunction(object):
         self.gcns = self.gcns.join(self.subsamp, 
                                    on=[f'{key}_' for key in self.sf_bins.keys()],
                                    how='left')
+        
+        # zero out k = 0 things
+        self.gcns = self.gcns.with_columns(
+            pl.when(pl.col("k") == 0)
+            .then(pl.lit([0.] * self.nsamps).cast(pl.Array(pl.Float64, self.nsamps)))
+            .otherwise(pl.col("pselect_samps"))
+            .alias("pselect_samps")
+        )
 
         # get the emperical Gaia DR3 selection function
         mapHpx7 = DR3SelectionFunctionTCG()
@@ -262,6 +277,58 @@ class SNCSelectionFunction(object):
 
         # save number of samples for posterior
         self.nsamps = nsamps
+
+    
+    def evalutate_Ajk(self, weight_volume: bool = False):
+        """
+        Evalutate sparse matrix of the effective selection
+        factor.
+
+        Parameters
+        ----------
+        weight_volume: bool
+            If to include Veff in the weighting for, e.g.
+            number density evaluation
+        """
+        # do all the 1D flattened indexing
+        bin_edges_sel = []
+        for key in self.sf_bins.keys():
+            if key == 'healpix':
+                bin_edges_sel.append(hp.order2npix(self.sf_bins['healpix']))
+            else:
+                bin_edges_sel.append(len(np.arange(*self.sf_bins[key])) - 1)
+
+        bin_idx = [self.gcns[f'{key}_'].to_numpy() for key in self.sf_bins.keys()]
+
+        self.idx_sel_gcns, self.valid_sel_gcns, self.max_idx_sel_gcns = calc_1d_index(bin_idx, bin_edges_sel)
+
+        bin_edges_mod = [len(np.arange(*self.sf_bins['g_rp'])) - 1,
+                         len(np.arange(*self.MG_bins)) - 1]
+
+        bin_idx = [self.gcns['g_rp_'].to_numpy(),
+                   self.gcns['MG_'].to_numpy()]
+
+        self.idx_mod_gcns, self.valid_mod_gcns, self.max_idx_mod_gcns = calc_1d_index(bin_idx, bin_edges_mod)
+
+        # get all of the A_jk
+        self.gcns_valid = self.valid_mod_gcns & self.valid_sel_gcns
+
+        self.A_jks = []
+        for i in range(self.nsamps):
+            Sf = self.gcns['pselect_samps'].to_numpy()[:, i][self.gcns_valid]
+            Vmax = self.gcns['Veff_samps'].to_numpy()[:, i][self.gcns_valid]
+            ev_weight = (np.isfinite(Vmax)) & (Vmax > 0)  # Always only include things within 100 pc?
+            if weight_volume:
+                weight = Sf * Vmax
+            else:
+                weight = Sf
+            Ajk = build_effective_sel_factor(self.idx_mod_gcns[self.gcns_valid][ev_weight],
+                                             self.idx_sel_gcns[self.gcns_valid][ev_weight],
+                                             weight[ev_weight],
+                                             self.max_idx_mod_gcns,
+                                             self.max_idx_sel_gcns)
+            self.A_jks.append(Ajk)
+
 
     def bootstrap_values(self,
                          func: Callable,
