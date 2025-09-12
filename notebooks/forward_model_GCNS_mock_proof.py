@@ -97,40 +97,9 @@ if __name__ == '__main__':
     plt.close()
 
     # run optimization
-    p_warm, p_samples, ev_valid = sf.forward_model(filter_data)
+    p_samples, ev_valid = sf.forward_model(filter_data)
 
     # plot results
-    f, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(36, 10))
-    dens = ax1.imshow(ptrue.T, origin='lower', aspect='auto',
-            extent=(g_rp_bins.min(), g_rp_bins.max(), MG_bins.min(), MG_bins.max()), vmin=0, vmax=1)
-    plt.colorbar(dens, ax=ax1)
-    ax1.invert_yaxis()
-    ax1.grid()
-    ax1.set_xlabel(r'$G - RP$')
-    ax1.set_ylabel(r'$M_G$')
-    ax1.set_title('True Subpopulation Probability')
-
-    dens = ax2.imshow(p_warm.reshape((n_g_rp, n_mg)).T, origin='lower', aspect='auto',
-            extent=(g_rp_bins.min(), g_rp_bins.max(), MG_bins.min(), MG_bins.max()), vmin=0, vmax=1)
-    plt.colorbar(dens, ax=ax2)
-    ax2.invert_yaxis()
-    ax2.grid()
-    ax2.set_xlabel(r'$G - RP$')
-    ax2.set_ylabel(r'$M_G$')
-    ax2.set_title('Forward Model Subpopulation Probability')
-
-    dens = ax3.imshow(ptrue.T - p_warm.reshape((n_g_rp, n_mg)).T, origin='lower', aspect='auto',
-            extent=(g_rp_bins.min(), g_rp_bins.max(), MG_bins.min(), MG_bins.max()), vmin=-1, vmax=1,
-                    cmap='seismic')
-    plt.colorbar(dens, ax=ax3)
-    ax3.invert_yaxis()
-    ax3.grid()
-    ax3.set_xlabel(r'$G - RP$')
-    ax3.set_ylabel(r'$M_G$')
-    ax3.set_title('Difference')
-    plt.savefig('paper_plots/mock_example/adam_warmup_results.png', bbox_inches='tight')
-    plt.close()
-
     p_mean = jnp.mean(p_samples, axis=0)
     p_cred_low = jnp.percentile(p_samples, 2.5, axis=0)
     p_cred_high = jnp.percentile(p_samples, 97.5, axis=0)
