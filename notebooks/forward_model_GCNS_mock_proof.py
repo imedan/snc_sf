@@ -119,7 +119,7 @@ if __name__ == '__main__':
         # filter_datai = sf.data.filter(pl.col('source_id').is_in(source_id_testi))
         # Nboot[i], _, _ = np.histogram2d(filter_datai['g_rp'].to_numpy(), filter_datai['MG'].to_numpy(),
         #                         bins=[g_rp_bins, MG_bins])
-        Nboot[i] = Ntot * p_samples[i].reshape((n_g_rp, n_mg))
+        Nboot[i] = RNG.binomial(Ntot.astype(int), p_samples[i].reshape((n_g_rp, n_mg)))
 
     Nobs, _, _ = np.histogram2d(filter_data['g_rp'].to_numpy()[ev_valid], filter_data['MG'].to_numpy()[ev_valid],
                                 bins=[g_rp_bins, MG_bins])
