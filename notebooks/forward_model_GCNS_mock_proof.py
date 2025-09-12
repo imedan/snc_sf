@@ -107,19 +107,19 @@ if __name__ == '__main__':
     Ntot, _, _ = np.histogram2d(sf.gcns['g_rp'].to_numpy()[sf.gcns_valid], sf.gcns['MG'].to_numpy()[sf.gcns_valid],
                             bins=[g_rp_bins, MG_bins])
 
-    Nboot = np.zeros((len(p_samples), Ntot.shape[0], Ntot.shape[1]))
+    Nboot = RNG.binomial(Ntot.astype(int), p_samples.reshape((-1, n_g_rp, n_mg)))
 
-    source_ids = sf.gcns['source_id'].to_numpy()[sf.gcns_valid]
+    # source_ids = sf.gcns['source_id'].to_numpy()[sf.gcns_valid]
 
-    for i in range(len(p_samples)):
-        # Ntarg = int(np.sum(Ntot.ravel() * n_samples[i]))
-        # norm = 1. / np.sum(n_samples[i][idx_mod_gcns[gcns_valid]])
-        # source_id_testi = RNG.choice(source_ids, Ntarg,
-        #                              p=n_samples[i][idx_mod_gcns[gcns_valid]] * norm, replace=False)
-        # filter_datai = sf.data.filter(pl.col('source_id').is_in(source_id_testi))
-        # Nboot[i], _, _ = np.histogram2d(filter_datai['g_rp'].to_numpy(), filter_datai['MG'].to_numpy(),
-        #                         bins=[g_rp_bins, MG_bins])
-        Nboot[i] = RNG.binomial(Ntot.astype(int), p_samples[i].reshape((n_g_rp, n_mg)))
+    # for i in range(len(p_samples)):
+    #     # Ntarg = int(np.sum(Ntot.ravel() * n_samples[i]))
+    #     # norm = 1. / np.sum(n_samples[i][idx_mod_gcns[gcns_valid]])
+    #     # source_id_testi = RNG.choice(source_ids, Ntarg,
+    #     #                              p=n_samples[i][idx_mod_gcns[gcns_valid]] * norm, replace=False)
+    #     # filter_datai = sf.data.filter(pl.col('source_id').is_in(source_id_testi))
+    #     # Nboot[i], _, _ = np.histogram2d(filter_datai['g_rp'].to_numpy(), filter_datai['MG'].to_numpy(),
+    #     #                         bins=[g_rp_bins, MG_bins])
+    #     Nboot[i] = RNG.binomial(Ntot.astype(int), p_samples[i].reshape((n_g_rp, n_mg)))
 
     Nobs, _, _ = np.histogram2d(filter_data['g_rp'].to_numpy()[ev_valid], filter_data['MG'].to_numpy()[ev_valid],
                                 bins=[g_rp_bins, MG_bins])
