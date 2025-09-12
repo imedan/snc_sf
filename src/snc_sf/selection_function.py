@@ -375,7 +375,9 @@ class SNCSelectionFunction(object):
 
 
     def forward_model(self,
-                      filter_data: pl.DataFrame) -> Tuple[ArrayImpl, ArrayImpl, np.ndarray]:
+                      filter_data: pl.DataFrame,
+                      num_warmup: int = 500,
+                      num_samples: int = 2500) -> Tuple[ArrayImpl, np.ndarray]:
         """
         Perform the forward model to calculate the subpopulation probability
         across the HR diagram for the GCNS
@@ -387,10 +389,6 @@ class SNCSelectionFunction(object):
 
         Returns
         --------
-        p_warm: jaxlib._jax.ArrayImpl
-            The resulting HR diagram probability of the subpopulation from
-            the adam warmup. This is a 1D raveled array.
-
         p_samples: jaxlib._jax.ArrayImpl
             The resulting posterior samples of HR diagram probability of the
             subpopulation from the MCMC. This is of shape (samples, 1D raveled index).
@@ -454,9 +452,7 @@ class SNCSelectionFunction(object):
                                               S_data, idx_mod_data)
             numpyro.factor("marginal_loglike", log_like)
 
-        nuts_kernel = NUTS(model)
         # setup data for MCMC model
-        mcmc = MCMC(nuts_kernel, num_warmup=500, num_samples=2000)
         k_gcns = jnp.array(self.gcns['k'].to_numpy()[self.gcns_valid])
         n_gcns = jnp.array(self.gcns['n'].to_numpy()[self.gcns_valid])
         idx_mod_gcns = self.idx_mod_gcns[self.gcns_valid]
@@ -468,6 +464,8 @@ class SNCSelectionFunction(object):
         idx_k_zero = jnp.where(k_gcns == 0)
 
         # run MCMC
+        nuts_kernel = NUTS(model)
+        mcmc = MCMC(nuts_kernel, num_warmup=num_warmup, num_samples=num_samples)
         mcmc.run(jax.random.PRNGKey(0), k_gcns, n_gcns, idx_mod_gcns, idx_sel_gcns, max_idx_mod_gcns, max_idx_sel_gcns,
                  k_data, n_data, idx_mod_data_j, idx_k_zero, jax.random.PRNGKey(666))
         samples = mcmc.get_samples()
