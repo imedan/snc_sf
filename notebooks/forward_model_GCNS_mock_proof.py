@@ -166,9 +166,9 @@ if __name__ == '__main__':
 
     plt.hist(MG_bins[:-1], bins=MG_bins, weights=np.nansum(np.nanpercentile(Nboot, 50, axis=0), axis=0),
             histtype='step', edgecolor='r', lw=2, label='Forward Modeling GCNS\nFrom Selected SNC stars')
-    plt.bar(x=MG_bins[:-1], height=np.nansum(np.nanpercentile(Nboot, 84, axis=0), axis=0) -
-                                np.nansum(np.nanpercentile(Nboot, 16, axis=0), axis=0),
-            bottom=np.nansum(np.nanpercentile(Nboot, 16, axis=0), axis=0), width=np.diff(MG_bins),
+    plt.bar(x=MG_bins[:-1], height=np.nansum(np.nanpercentile(Nboot, 97.5, axis=0), axis=0) -
+                                np.nansum(np.nanpercentile(Nboot, 2.5, axis=0), axis=0),
+            bottom=np.nansum(np.nanpercentile(Nboot, 2.5, axis=0), axis=0), width=np.diff(MG_bins),
             align='edge', linewidth=0, color='red', alpha=0.25, zorder=-1)
 
     plt.legend(prop={'size':16})
