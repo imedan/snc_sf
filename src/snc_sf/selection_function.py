@@ -387,6 +387,12 @@ class SNCSelectionFunction(object):
         filter_data: pl.DataFrame
             The filtered dataset of self.data for the subpopulation
 
+        num_warmup: int
+            Number if iterations for MCMC warmup
+
+        num_samples: int
+            Number samples for the MCMC
+
         Returns
         --------
         p_samples: jaxlib._jax.ArrayImpl
