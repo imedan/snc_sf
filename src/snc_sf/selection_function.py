@@ -377,7 +377,7 @@ class SNCSelectionFunction(object):
     def forward_model(self,
                       filter_data: pl.DataFrame,
                       num_warmup: int = 500,
-                      num_samples: int = 2500) -> Tuple[ArrayImpl, np.ndarray]:
+                      num_samples: int = 2000) -> Tuple[ArrayImpl, np.ndarray]:
         """
         Perform the forward model to calculate the subpopulation probability
         across the HR diagram for the GCNS
