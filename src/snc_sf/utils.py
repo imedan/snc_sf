@@ -3,10 +3,44 @@ import astropy.units as u
 import healpy as hp
 import numpy as np
 import polars as pl
-from importlib.resources import open_binary
+from importlib.resources import open_binary, files
 import ast
 from scipy.sparse import coo_matrix
 from typing import Tuple
+from astroquery.vizier import Vizier
+
+
+def download_gcns_data(file_type: str):
+    """
+    Download any missing GCNS data from Vizier
+
+    Parameters
+    ---------
+    file_type: str
+        Which table from GCNS to download. Options are
+        'selected' (the selected objects in the catalog),
+        'maglim' (the magnitude limit healpix map), or
+        'distpdf' (the distance PDF of each sample)
+    """
+    if file_type == 'selected':
+        viziertab = 'J/A+A/649/A6/table1c'
+        savefile = files('snc_sf.sf_files') / 'GCNS-result.csv'
+    elif file_type == 'maglim':
+        viziertab = 'J/A+A/649/A6/maglim'
+        savefile = files('snc_sf.sf_files') / 'GCNS_healpix_maglim.fit'
+    elif file_type == 'distpdf':
+        viziertab = 'J/A+A/649/A6/distpdf'
+        savefile = files('snc_sf.sf_files') / 'GNSC_distpdf.csv'
+    else:
+        raise ValueError('Not a valid entry for file_type!')
+
+    vizier = Vizier(columns=["**"], row_limit=-1)
+    res = vizier.get_catalogs_async(viziertab)
+    gcns = Vizier._parse_result(res)
+    if file_type == 'maglim':
+        gcns[0].write(savefile, format='fits')
+    else:
+        gcns[0].write(savefile, format='csv')
 
 
 def coord2healpix(coord: SkyCoord, nside: int, nest: bool = True) -> np.ndarray:

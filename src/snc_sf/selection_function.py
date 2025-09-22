@@ -4,11 +4,13 @@ from astropy.io import fits
 import healpy as hp
 import numpy as np
 import polars as pl
-from importlib.resources import open_binary
+from importlib.resources import open_binary, files
 import ast
 from collections.abc import Callable
 from typing import Tuple
 from gaiaunlimited.selectionfunctions import DR3SelectionFunctionTCG
+import os.path
+import warnings
 
 import jax
 from jax.experimental.sparse import BCOO
@@ -25,7 +27,8 @@ except ModuleNotFoundError:
     from jaxlib.xla_extension import ArrayImpl
 
 from .utils import (coord2healpix, calculateSF, cal_veff,
-                    calc_subsample_p, calc_1d_index, build_effective_sel_factor)
+                    calc_subsample_p, calc_1d_index, build_effective_sel_factor,
+                    download_gcns_data)
 from .optimize import sigmoid_inv, objective_jax_multi, compute_single_loglike
 
 
@@ -112,6 +115,17 @@ class SNCSelectionFunction(object):
                  RNG: np.random._generator.Generator = np.random.default_rng(666),
                  mean: bool = False,
                  calc_SF: bool = True):
+        # check if GCNS files exist
+        if not os.path.isfile(files('snc_sf.sf_files') / 'GCNS-result.csv'):
+            warnings.warn("Selected GCNS stars file not available! Downloading from Vizier")
+            download_gcns_data('selected')
+        if not os.path.isfile(files('snc_sf.sf_files') / 'GNSC_distpdf.csv'):
+            warnings.warn("Distance PDF for selected GCNS stars file not available! Downloading from Vizier")
+            download_gcns_data('distpdf')
+        if not os.path.isfile(files('snc_sf.sf_files') / 'GCNS_healpix_maglim.fit'):
+            warnings.warn("magniutde limits of GCNS stars file not available! Downloading from Vizier")
+            download_gcns_data('maglim')
+
         self.RNG = RNG
         self.mean = mean
         # grab GCNS for SF
@@ -140,7 +154,7 @@ class SNCSelectionFunction(object):
                                   nside=2 ** 5)
         self.gcns = self.gcns.with_columns(healpix_5=pl.Series(healpix_5))
         maglim = fits.open(open_binary('snc_sf.sf_files', 'GCNS_healpix_maglim.fit').name)[1].data
-        self.gcns = self.gcns.join(pl.DataFrame({'healpix_5': np.arange(hp.order2npix(5)), 'maglim': maglim['mag80']}),
+        self.gcns = self.gcns.join(pl.DataFrame({'healpix_5': np.arange(hp.order2npix(5)), 'maglim': maglim['mag80'].astype(np.float32)}),
                                    on='healpix_5', how='left')
 
         # load the data
