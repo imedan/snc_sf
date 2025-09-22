@@ -8,6 +8,7 @@ import ast
 from scipy.sparse import coo_matrix
 from typing import Tuple
 from astroquery.vizier import Vizier
+from astroquery.gaia import Gaia
 
 
 def download_gcns_data(file_type: str):
@@ -34,9 +35,15 @@ def download_gcns_data(file_type: str):
     else:
         raise ValueError('Not a valid entry for file_type!')
 
-    vizier = Vizier(columns=["**"], row_limit=-1)
-    res = vizier.get_catalogs_async(viziertab)
-    gcns = Vizier._parse_result(res)
+    if file_type == 'selected':
+        Gaia.ROW_LIMIT = -1
+        gcns_tab = Gaia.load_table('external.gaiaedr3_gcns_main_1')
+        job = Gaia.launch_job_async('select * from external.gaiaedr3_gcns_main_1')
+        gcns = [job.get_results()]
+    else:
+        vizier = Vizier(columns=["**"], row_limit=-1)
+        res = vizier.get_catalogs_async(viziertab)
+        gcns = Vizier._parse_result(res)
     if file_type == 'maglim':
         gcns[0].write(savefile, format='fits')
     else:
