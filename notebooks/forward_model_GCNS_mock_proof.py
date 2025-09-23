@@ -3,23 +3,14 @@ from snc_sf.utils import *
 from snc_sf.optimize import *
 
 import numpy as np
-from scipy.stats import multivariate_normal
 import polars as pl
 import matplotlib.pylab as plt
 import os
 from matplotlib.colors import LogNorm
 plt.style.use('%s/mystyle.mplstyle' % os.environ['MPL_STYLES'])
-from scipy.optimize import minimize
-from tqdm import tqdm
 import jax
 jax.config.update("jax_enable_x64", False)
 import jax.numpy as jnp
-from jax.scipy.special import logsumexp
-from jax.nn import softplus, sigmoid
-from jax.experimental.sparse import BCOO   # JAX sparse
-from jaxopt import LBFGS
-import optax
-from jax import lax
 
 
 if __name__ == '__main__':
@@ -48,15 +39,6 @@ if __name__ == '__main__':
 
     X, Y = np.meshgrid(0.5 * (g_rp_bins[:-1] + g_rp_bins[1:]),
                     0.5 * (MG_bins[:-1] + MG_bins[1:]), indexing='ij')
-
-    # p_true = multivariate_normal([0.5, 6], [[0.02, 2], [0.2, 5.]])
-
-    # # get the test 'true' number density
-    # ptrue = p_true.pdf(np.column_stack((X.ravel(),
-    #                                     Y.ravel())))
-    # ptrue /= np.nanmax(ptrue)
-    # ptrue *= 0.9
-    # ptrue = ptrue.reshape(X.shape)
 
     ptrue = (np.sin(Y) + 1) * 0.4
 
@@ -108,18 +90,6 @@ if __name__ == '__main__':
                             bins=[g_rp_bins, MG_bins])
 
     Nboot = RNG.binomial(Ntot.astype(int), p_samples.reshape((-1, n_g_rp, n_mg)))
-
-    # source_ids = sf.gcns['source_id'].to_numpy()[sf.gcns_valid]
-
-    # for i in range(len(p_samples)):
-    #     # Ntarg = int(np.sum(Ntot.ravel() * n_samples[i]))
-    #     # norm = 1. / np.sum(n_samples[i][idx_mod_gcns[gcns_valid]])
-    #     # source_id_testi = RNG.choice(source_ids, Ntarg,
-    #     #                              p=n_samples[i][idx_mod_gcns[gcns_valid]] * norm, replace=False)
-    #     # filter_datai = sf.data.filter(pl.col('source_id').is_in(source_id_testi))
-    #     # Nboot[i], _, _ = np.histogram2d(filter_datai['g_rp'].to_numpy(), filter_datai['MG'].to_numpy(),
-    #     #                         bins=[g_rp_bins, MG_bins])
-    #     Nboot[i] = RNG.binomial(Ntot.astype(int), p_samples[i].reshape((n_g_rp, n_mg)))
 
     Nobs, _, _ = np.histogram2d(filter_data['g_rp'].to_numpy()[ev_valid], filter_data['MG'].to_numpy()[ev_valid],
                                 bins=[g_rp_bins, MG_bins])
