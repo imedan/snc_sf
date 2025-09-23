@@ -86,7 +86,7 @@ if __name__ == '__main__':
     ax1.grid()
 
     _, _, _, dens = ax2.hist2d(filter_data['g_rp'].to_numpy(), filter_data['MG'].to_numpy(),
-                            bins=[g_rp_bins, MG_bins], norm=LogNorm(), cmap='inferno')
+                            bins=[g_rp_bins, MG_bins], norm=LogNorm(vmin=1e-1, vmax=5e3), cmap='inferno')
     plt.colorbar(dens, ax=ax2, label='N')
     ax2.invert_yaxis()
     ax2.grid()
@@ -128,7 +128,7 @@ if __name__ == '__main__':
     f, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 10))
     dens = ax1.imshow(np.nanpercentile(Nboot, 50, axis=0).T, origin='lower', aspect='auto',
             extent=(g_rp_bins.min(), g_rp_bins.max(), MG_bins.min(), MG_bins.max()),
-                    norm=LogNorm(vmin=1e-1, vmax=1e4), cmap='inferno')
+                    norm=LogNorm(vmin=1e-1, vmax=5e3), cmap='inferno')
     plt.colorbar(dens, ax=ax1, label='N')
     ax1.invert_yaxis()
     ax1.grid()
@@ -138,7 +138,7 @@ if __name__ == '__main__':
 
     dens = ax2.imshow(Ntot.T * ptrue.T, origin='lower', aspect='auto',
             extent=(g_rp_bins.min(), g_rp_bins.max(), MG_bins.min(), MG_bins.max()), 
-                    norm=LogNorm(vmin=1e-1, vmax=1e4), cmap='inferno')
+                    norm=LogNorm(vmin=1e-1, vmax=5e3), cmap='inferno')
     plt.colorbar(dens, ax=ax2, label='N')
     ax2.invert_yaxis()
     ax2.grid()
