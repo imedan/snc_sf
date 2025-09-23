@@ -23,11 +23,11 @@ from jax import lax
 
 
 if __name__ == '__main__':
-    MG_bin_list = [0, 20, 0.5]
+    MG_bin_list = [0, 20, 0.25]
 
     sf_bins={'healpix': 3,
-            'phot_g_mean_mag': [0, 22, 1],
-            'g_rp': [-0.4, 2.2, 0.1]}
+             'phot_g_mean_mag': [0, 22, 1],
+             'g_rp': [-0.4, 2.2, 0.05]}
 
     n_g_rp = len(np.arange(*sf_bins['g_rp'])) - 1
     n_mg = len(np.arange(*MG_bin_list)) - 1
@@ -77,8 +77,8 @@ if __name__ == '__main__':
 
     f, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 10))
     dens = ax1.imshow(ptrue.T, origin='lower', aspect='auto',
-            extent=(g_rp_bins.min(), g_rp_bins.max(), MG_bins.min(), MG_bins.max()))
-    plt.colorbar(dens, ax=ax1)
+            extent=(g_rp_bins.min(), g_rp_bins.max(), MG_bins.min(), MG_bins.max()), cmap='inferno')
+    plt.colorbar(dens, ax=ax1, label=r'$p_k$')
     ax1.invert_yaxis()
     ax1.set_xlabel(r'$G - RP$')
     ax1.set_ylabel(r'$M_G$')
@@ -86,13 +86,13 @@ if __name__ == '__main__':
     ax1.grid()
 
     _, _, _, dens = ax2.hist2d(filter_data['g_rp'].to_numpy(), filter_data['MG'].to_numpy(),
-                            bins=[g_rp_bins, MG_bins], norm=LogNorm())
-    plt.colorbar(dens, ax=ax2)
+                            bins=[g_rp_bins, MG_bins], norm=LogNorm(), cmap='inferno')
+    plt.colorbar(dens, ax=ax2, label='N')
     ax2.invert_yaxis()
     ax2.grid()
     ax2.set_xlabel(r'$G - RP$')
     ax2.set_ylabel(r'$M_G$')
-    ax2.set_title('Mock Dataset')
+    ax2.set_title('Selected SNC stars (Mock Dataset)')
     plt.savefig('paper_plots/mock_example/mock_data.png', bbox_inches='tight')
     plt.close()
 
@@ -125,11 +125,11 @@ if __name__ == '__main__':
                                 bins=[g_rp_bins, MG_bins])
 
 
-    f, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(36, 10))
+    f, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 10))
     dens = ax1.imshow(np.nanpercentile(Nboot, 50, axis=0).T, origin='lower', aspect='auto',
             extent=(g_rp_bins.min(), g_rp_bins.max(), MG_bins.min(), MG_bins.max()),
-                    norm=LogNorm(vmin=1e-1, vmax=1e4))
-    plt.colorbar(dens, ax=ax1)
+                    norm=LogNorm(vmin=1e-1, vmax=1e4), cmap='inferno')
+    plt.colorbar(dens, ax=ax1, label='N')
     ax1.invert_yaxis()
     ax1.grid()
     ax1.set_xlabel(r'$G - RP$')
@@ -138,23 +138,13 @@ if __name__ == '__main__':
 
     dens = ax2.imshow(Ntot.T * ptrue.T, origin='lower', aspect='auto',
             extent=(g_rp_bins.min(), g_rp_bins.max(), MG_bins.min(), MG_bins.max()), 
-                    norm=LogNorm(vmin=1e-1, vmax=1e4))
-    plt.colorbar(dens, ax=ax2)
+                    norm=LogNorm(vmin=1e-1, vmax=1e4), cmap='inferno')
+    plt.colorbar(dens, ax=ax2, label='N')
     ax2.invert_yaxis()
     ax2.grid()
     ax2.set_xlabel(r'$G - RP$')
     ax2.set_ylabel(r'$M_G$')
     ax2.set_title('Directly Selecting GCNS (True)')
-
-    dens = ax3.imshow(Nobs.T, origin='lower', aspect='auto',
-            extent=(g_rp_bins.min(), g_rp_bins.max(), MG_bins.min(), MG_bins.max()),
-                    norm=LogNorm(vmin=1e-1, vmax=1e4))
-    plt.colorbar(dens, ax=ax3)
-    ax3.invert_yaxis()
-    ax3.grid()
-    ax3.set_title('Selected SNC stars')
-    ax3.set_xlabel(r'$G - RP$')
-    ax3.set_ylabel(r'$M_G$')
     plt.savefig('paper_plots/mock_example/mcmc_results.png', bbox_inches='tight')
     plt.close()
 
@@ -162,7 +152,7 @@ if __name__ == '__main__':
     plt.hist(MG_bins[:-1], bins=MG_bins, weights=np.nansum(Ntot * ptrue, axis=0),
             histtype='step', edgecolor='k', lw=2, label='Directly Selecting GCNS (True)')
     plt.hist(MG_bins[:-1], bins=MG_bins, weights=np.nansum(Nobs, axis=0),
-            histtype='step', edgecolor='b', lw=2, label='Selected SNC stars')
+            histtype='step', edgecolor='b', lw=2, label='Selected SNC stars (Mock Dataset)')
 
     plt.hist(MG_bins[:-1], bins=MG_bins, weights=np.nansum(np.nanpercentile(Nboot, 50, axis=0), axis=0),
             histtype='step', edgecolor='r', lw=2, label='Forward Modeling GCNS\nFrom Selected SNC stars')
