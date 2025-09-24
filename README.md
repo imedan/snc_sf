@@ -1,6 +1,6 @@
 # SDSS-V Solar Neighborhood Census Selection Function and Subpopulation Probabilities
 
-This repository provides the code to calculate the selection function for the SDSS-V Solar Neighborhood Census (SNC) relative to the Gaia Catalog of Nearby Stars ([GCNS](https://ui.adsabs.harvard.edu/abs/2021A%26A...649A...6G/abstract)). With this selection function, the code allows for the forward modeling of subpopulation probabilities across the HR diagram. A use case would be selecting all stars in the SNC with [Fe/H] < -1 and the forward model would evaluate the likely probability of selecting [Fe/H] < -1 stars from the GCNS across the HR diagram.
+This repository provides the code to calculate the selection function for the SDSS-V Solar Neighborhood Census (SNC) relative to the Gaia Catalog of Nearby Stars ([GCNS](https://ui.adsabs.harvard.edu/abs/2021A%26A...649A...6G/abstract)). With this selection function, the code allows for the forward modeling of subpopulation probabilities across the HR diagram. A use case would be selecting all stars in the SNC with [Fe/H] < -1 and the forward model would evaluate the likely probability of selecting [Fe/H] < -1 stars from the GCNS in discrete bins across the HR diagram.
 
 ## Installation
 
