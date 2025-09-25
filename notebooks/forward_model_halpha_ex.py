@@ -100,7 +100,7 @@ if __name__ == '__main__':
 
     f.subplots_adjust(right=0.84)
     cbar_ax = f.add_axes([0.85, 0.15, 0.01, 0.7])
-    f.colorbar(dens, cax=cbar_ax, label=r'$p_k$')
+    f.colorbar(dens, cax=cbar_ax, label=r'$p_{\mathsf{sub}, k}$')
 
     for ax in [ax1, ax2, ax3]:
         ax.set_xlabel(r'$G-RP$')
