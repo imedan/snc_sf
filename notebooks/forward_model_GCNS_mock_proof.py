@@ -60,7 +60,7 @@ if __name__ == '__main__':
     f, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 10))
     dens = ax1.imshow(ptrue.T, origin='lower', aspect='auto',
             extent=(g_rp_bins.min(), g_rp_bins.max(), MG_bins.min(), MG_bins.max()), cmap='inferno')
-    plt.colorbar(dens, ax=ax1, label=r'$p_k$')
+    plt.colorbar(dens, ax=ax1, label=r'$p_{\mathsf{sub}, k}$')
     ax1.invert_yaxis()
     ax1.set_xlabel(r'$G - RP$')
     ax1.set_ylabel(r'$M_G$')
