@@ -442,19 +442,7 @@ class SNCSelectionFunction(object):
 
         idx_mod_data, valid_mod_data, max_idx_mod_data = calc_1d_index(bin_idx, bin_edges)
 
-        # convert for jax
-        A_jks_bcoo = tuple(BCOO.from_scipy_sparse(Ajk) for Ajk in self.A_jks)
-
         ev_valid = valid_sel_data & valid_mod_data
-        S_data = filter_data['pselect_samps'].to_numpy()[ev_valid] * \
-                 filter_data['completeness'].to_numpy()[ev_valid]
-        Vmax_data = filter_data['Veff_samps'].to_numpy()[ev_valid]
-
-        # Prepare JAX arrays once
-        if self.weight_volume:
-            weights_data_j = jnp.asarray(S_data * Vmax_data)
-        else:
-            weights_data_j = jnp.asarray(S_data)
         idx_mod_data_j = jnp.asarray(idx_mod_data[ev_valid], dtype=jnp.int32)
         idx_sel_data_j = jnp.asarray(idx_sel_data[ev_valid], dtype=jnp.int32)
         
