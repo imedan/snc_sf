@@ -309,9 +309,9 @@ def calc_1d_index(bin_idx: list,
     return idx_1d, valid, max_idx
 
 
-def build_effective_sel_factor(model_idx: np.ndarray | jaxlib._jax.ArrayImpl,
-                               sf_idx: np.ndarray | jaxlib._jax.ArrayImpl,
-                               weights: np.ndarray | jaxlib._jax.ArrayImpl,
+def build_effective_sel_factor(model_idx: np.ndarray | ArrayImpl,
+                               sf_idx: np.ndarray | ArrayImpl,
+                               weights: np.ndarray | ArrayImpl,
                                max_model_idx: int,
                                max_sf_idx: int) -> BCOO:
     """
