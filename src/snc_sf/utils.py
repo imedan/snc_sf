@@ -5,10 +5,15 @@ import numpy as np
 import polars as pl
 from importlib.resources import open_binary, files
 import ast
-from scipy.sparse import coo_matrix
+from jax.experimental.sparse import BCOO
+import jax.numpy as jnp
 from typing import Tuple
 from astroquery.vizier import Vizier
 from astroquery.gaia import Gaia
+try:
+    from jaxlib._jax import ArrayImpl
+except ModuleNotFoundError:
+    from jaxlib.xla_extension import ArrayImpl
 
 
 def download_gcns_data(file_type: str):
@@ -304,27 +309,27 @@ def calc_1d_index(bin_idx: list,
     return idx_1d, valid, max_idx
 
 
-def build_effective_sel_factor(model_idx: np.ndarray,
-                               sf_idx: np.ndarray,
-                               weights: np.ndarray,
+def build_effective_sel_factor(model_idx: np.ndarray | jaxlib._jax.ArrayImpl,
+                               sf_idx: np.ndarray | jaxlib._jax.ArrayImpl,
+                               weights: np.ndarray | jaxlib._jax.ArrayImpl,
                                max_model_idx: int,
-                               max_sf_idx: int) -> np.ndarray:
+                               max_sf_idx: int) -> BCOO:
     """
     Calculate the sparse matrix of weights used to calculate the
     normalizing factor for the forward model
 
     Parameters
     -----------
-    model_idx: np.ndarray
+    model_idx: np.ndarray | jaxlib._jax.ArrayImpl
         1D flattened indexes for the GCNS data. These indexes are
         for the grid you are forward modeling the number
         densities onto
     
-    sf_idx: np.ndarray
+    sf_idx: np.ndarray | jaxlib._jax.ArrayImpl
         1D flattened indexes for the GCNS data. These indexes are
         for the grid the selection function is calculated onto.
 
-    weights: np.ndarray
+    weights: np.ndarray | jaxlib._jax.ArrayImpl
         The weights to apply to the sparse matrix.
         Could be, e.g. the selection function probabilities of
         the observed data for the GCNS data, or some volume
@@ -338,15 +343,12 @@ def build_effective_sel_factor(model_idx: np.ndarray,
 
     Returns
     -------
-    A_j: np.ndarray
+    A_j: jax.experimental.sparse.BCOO
         The effective selection factor used to normalize the
         log probability.
     """
-    # Sparse matrix
-    A_jk_sparse = coo_matrix((weights, (sf_idx, model_idx)),
-                             shape=(max_sf_idx, max_model_idx))
-
-    # Convert to CSR for efficient row operations
-    A_jk_csr = A_jk_sparse.tocsr()
-    return A_jk_csr
+    # make JAX sparse matric
+    A_jk = BCOO((weights, jnp.column_stack((sf_idx, model_idx))),
+                 shape=(max_sf_idx, max_model_idx))
+    return A_jk
     

@@ -459,10 +459,12 @@ class SNCSelectionFunction(object):
             rng_key, key_data = jax.random.split(rng_key)
             S_data = jax.random.beta(key_data, k_data + 1, n_data - k_data + 1) * \
                      completeness_data
-
-            A_jk = BCOO((S_gcns,
-                         jnp.column_stack((idx_sel_gcns, idx_mod_gcns))),
-                         shape=(max_idx_sel_gcns, max_idx_mod_gcns))
+            
+            A_jk = build_effective_sel_factor(idx_mod_gcns,
+                                              idx_sel_gcns,
+                                              S_gcns,
+                                              max_idx_mod_gcns,
+                                              max_idx_sel_gcns)
 
             log_like = compute_single_loglike(p, A_jk,
                                               S_data, idx_mod_data)
