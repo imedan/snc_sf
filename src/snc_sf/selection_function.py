@@ -242,6 +242,10 @@ class SNCSelectionFunction(object):
                                      np.array(self.data['phot_g_mean_mag']))
         self.data = self.data.with_columns(completeness=completeness)
 
+        completeness = mapHpx7.query(self.coord_gcns,
+                                     np.array(self.gcns['phot_g_mean_mag']))
+        self.gcns = self.gcns.with_columns(completeness=completeness)
+
 
     def sample_posterior(self):
         """
@@ -373,7 +377,8 @@ class SNCSelectionFunction(object):
 
         self.A_jks = []
         for i in range(self.nsamps):
-            Sf = self.gcns['pselect_samps'].to_numpy()[:, i][self.gcns_valid]
+            Sf = self.gcns['pselect_samps'].to_numpy()[:, i][self.gcns_valid] * \
+                 self.gcns['completeness'].to_numpy()[self.gcns_valid]
             Vmax = self.gcns['Veff_samps'].to_numpy()[:, i][self.gcns_valid]
             ev_weight = (np.isfinite(Vmax)) & (Vmax > 0)  # Always only include things within 100 pc?
             if weight_volume:
@@ -441,7 +446,8 @@ class SNCSelectionFunction(object):
         A_jks_bcoo = tuple(BCOO.from_scipy_sparse(Ajk) for Ajk in self.A_jks)
 
         ev_valid = valid_sel_data & valid_mod_data
-        S_data = filter_data['pselect_samps'].to_numpy()[ev_valid]
+        S_data = filter_data['pselect_samps'].to_numpy()[ev_valid] * \
+                 filter_data['completeness'].to_numpy()[ev_valid]
         Vmax_data = filter_data['Veff_samps'].to_numpy()[ev_valid]
 
         # Prepare JAX arrays once
@@ -453,16 +459,18 @@ class SNCSelectionFunction(object):
         idx_sel_data_j = jnp.asarray(idx_sel_data[ev_valid], dtype=jnp.int32)
         
         ### OPTIMIZE MCMC ###
-        def model(k_gcns, n_gcns, idx_mod_gcns, idx_sel_gcns, max_idx_mod_gcns, max_idx_sel_gcns,
-                  k_data, n_data, idx_mod_data, idx_k_zero, rng_key):
+        def model(k_gcns, n_gcns, idx_mod_gcns, idx_sel_gcns, max_idx_mod_gcns, max_idx_sel_gcns, completeness_gcns,
+                  k_data, n_data, idx_mod_data, completeness_data, idx_k_zero, rng_key):
             with numpyro.plate("p_plate", max_idx_mod_data):  # this only works if self.weight_volume is Flase
                 p = numpyro.sample("p", dist.Uniform(0.0, 1.0))
             rng_key, key_gcns = jax.random.split(rng_key)
-            S_gcns = jax.random.beta(key_gcns, k_gcns + 1, n_gcns - k_gcns + 1)
+            S_gcns = jax.random.beta(key_gcns, k_gcns + 1, n_gcns - k_gcns + 1) * \
+                     completeness_gcns
             S_gcns = S_gcns.at[idx_k_zero].set(0.)
 
             rng_key, key_data = jax.random.split(rng_key)
-            S_data = jax.random.beta(key_data, k_data + 1, n_data - k_data + 1)
+            S_data = jax.random.beta(key_data, k_data + 1, n_data - k_data + 1) * \
+                     completeness_data
 
             A_jk = BCOO((S_gcns,
                          jnp.column_stack((idx_sel_gcns, idx_mod_gcns))),
@@ -479,15 +487,18 @@ class SNCSelectionFunction(object):
         idx_sel_gcns = self.idx_sel_gcns[self.gcns_valid]
         max_idx_mod_gcns = self.max_idx_mod_gcns
         max_idx_sel_gcns = self.max_idx_sel_gcns
+        completeness_gcns = jnp.array(self.gcns['completeness'].to_numpy()[self.gcns_valid])
         k_data = jnp.array(filter_data['k'].to_numpy()[ev_valid])
         n_data = jnp.array(filter_data['n'].to_numpy()[ev_valid])
+        completeness_data = jnp.array(filter_data['completeness'].to_numpy()[ev_valid])
         idx_k_zero = jnp.where(k_gcns == 0)
 
         # run MCMC
         nuts_kernel = NUTS(model)
         mcmc = MCMC(nuts_kernel, num_warmup=num_warmup, num_samples=num_samples)
-        mcmc.run(jax.random.PRNGKey(0), k_gcns, n_gcns, idx_mod_gcns, idx_sel_gcns, max_idx_mod_gcns, max_idx_sel_gcns,
-                 k_data, n_data, idx_mod_data_j, idx_k_zero, jax.random.PRNGKey(666))
+        mcmc.run(jax.random.PRNGKey(0), k_gcns, n_gcns, idx_mod_gcns, idx_sel_gcns,
+                 max_idx_mod_gcns, max_idx_sel_gcns, completeness_gcns,
+                 k_data, n_data, idx_mod_data_j, completeness_data, idx_k_zero, jax.random.PRNGKey(666))
         samples = mcmc.get_samples()
 
         p_samples = samples['p']
