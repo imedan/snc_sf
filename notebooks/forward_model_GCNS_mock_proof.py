@@ -23,7 +23,7 @@ if __name__ == '__main__':
     n_g_rp = len(np.arange(*sf_bins['g_rp'])) - 1
     n_mg = len(np.arange(*MG_bin_list)) - 1
 
-    data_file = '../../obs_100pc_edr3.csv'
+    data_file = 'obs_100pc_edr3.csv'
 
     # initilize
     mean = True
@@ -79,7 +79,7 @@ if __name__ == '__main__':
     plt.close()
 
     # run optimization
-    p_samples, ev_valid = sf.forward_model(filter_data)
+    p_samples, ev_valid = sf.forward_model(filter_data, num_warmup=10000, num_samples=2000)
 
     # plot results
     p_mean = jnp.mean(p_samples, axis=0)
