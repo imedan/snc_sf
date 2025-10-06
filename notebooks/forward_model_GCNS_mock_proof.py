@@ -79,7 +79,7 @@ if __name__ == '__main__':
     plt.close()
 
     # run optimization
-    p_samples, ev_valid = sf.forward_model(filter_data, num_warmup=10000, num_samples=2000)
+    p_samples, ev_valid = sf.forward_model(filter_data, num_warmup=5000, num_samples=2000, num_chains=2)
 
     # plot results
     p_mean = jnp.mean(p_samples, axis=0)
