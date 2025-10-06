@@ -6,6 +6,7 @@ import numpy as np
 import polars as pl
 import matplotlib.pylab as plt
 import os
+import os.path
 from matplotlib.colors import LogNorm
 plt.style.use('%s/mystyle.mplstyle' % os.environ['MPL_STYLES'])
 import jax
@@ -26,27 +27,28 @@ if __name__ == '__main__':
 
 
 
-    data_file = '../../obs_100pc_edr3.csv'
+    if not os.path.isfile('LF_snc_forward_data.csv'):
+        data_file = '../../obs_100pc_edr3.csv'
 
-    # initilize
-    mean = False
-    sf = SNCSelectionFunction(data_file, sf_bins, MG_bin_list, mean=mean)
+        # initilize
+        mean = False
+        sf = SNCSelectionFunction(data_file, sf_bins, MG_bin_list, mean=mean)
 
-    # cross match with lineforest
-    tbl = Table.read('../../../DR19/astraAllStarLineForest-0.6.0.fits', hdu=1)
-    names = [name for name in tbl.colnames if len(tbl[name].shape) <= 1]
-    LF = pl.from_pandas(tbl[names].to_pandas())
+        # cross match with lineforest
+        tbl = Table.read('../../../DR19/astraAllStarLineForest-0.6.0.fits', hdu=1)
+        names = [name for name in tbl.colnames if len(tbl[name].shape) <= 1]
+        LF = pl.from_pandas(tbl[names].to_pandas())
 
-    allstar = Table.read('../../../DR19/mwmAllStar-0.6.0.fits', hdu=1)
+        allstar = Table.read('../../../DR19/mwmAllStar-0.6.0.fits', hdu=1)
 
-    data_LF = sf.data.filter(pl.col('source_id').is_in(allstar['gaia_dr3_source_id'])).join(LF, left_on='source_id', right_on='gaia_dr3_source_id', how='left')
-    data_LF = data_LF.unique('source_id', keep='last')
+        data_LF = sf.data.filter(pl.col('source_id').is_in(allstar['gaia_dr3_source_id'])).join(LF, left_on='source_id', right_on='gaia_dr3_source_id', how='left')
+        data_LF = data_LF.unique('source_id', keep='last')
 
-    # save to file for testing
-    cols_save = ['source_id', 'ra', 'ra_error', 'dec', 'dec_error', 'parallax',
-                'parallax_error', 'g_rp', 'phot_g_mean_mag', 'phot_g_mean_flux_over_error',
-                'eqw_h_alpha', 'abs_h_alpha', 'detection_stat_h_alpha', 'detection_raw_h_alpha']
-    data_LF[cols_save].write_csv('LF_snc_forward_data.csv')
+        # save to file for testing
+        cols_save = ['source_id', 'ra', 'ra_error', 'dec', 'dec_error', 'parallax',
+                        'parallax_error', 'g_rp', 'phot_g_mean_mag', 'phot_g_mean_flux_over_error',
+                        'eqw_h_alpha', 'abs_h_alpha', 'detection_stat_h_alpha', 'detection_raw_h_alpha']
+        data_LF[cols_save].write_csv('LF_snc_forward_data.csv')
 
     # initialize with LF dataset
     mean = True
@@ -61,10 +63,10 @@ if __name__ == '__main__':
 
     # run for emmission and absoprtion data
     filter_data_ab = sf.data.filter((pl.col('eqw_h_alpha') > -1) | (pl.col('eqw_h_alpha').is_null()))
-    p_samples_ab, ev_valid_ab = sf.forward_model(filter_data_ab)
+    p_samples_ab, ev_valid_ab = sf.forward_model(filter_data_ab, num_warmup=5000, num_samples=2000, num_chains=2)
 
     filter_data_em = sf.data.filter((pl.col('eqw_h_alpha') < -1.))
-    p_samples_em, ev_valid_em = sf.forward_model(filter_data_em)
+    p_samples_em, ev_valid_em = sf.forward_model(filter_data_em, num_warmup=5000, num_samples=2000, num_chains=2)
 
     # plot the results
     RNG = np.random.default_rng(666)
