@@ -396,7 +396,8 @@ class SNCSelectionFunction(object):
     def forward_model(self,
                       filter_data: pl.DataFrame,
                       num_warmup: int = 500,
-                      num_samples: int = 2000) -> Tuple[ArrayImpl, np.ndarray]:
+                      num_samples: int = 2000,
+                      num_chains: int = 1) -> Tuple[ArrayImpl, np.ndarray]:
         """
         Perform the forward model to calculate the subpopulation probability
         across the HR diagram for the GCNS
@@ -411,6 +412,9 @@ class SNCSelectionFunction(object):
 
         num_samples: int
             Number samples for the MCMC
+
+        num_chains: int
+            Number of chains for MCMC
 
         Returns
         --------
@@ -485,7 +489,8 @@ class SNCSelectionFunction(object):
 
         # run MCMC
         nuts_kernel = NUTS(model)
-        mcmc = MCMC(nuts_kernel, num_warmup=num_warmup, num_samples=num_samples)
+        mcmc = MCMC(nuts_kernel, num_warmup=num_warmup, num_samples=num_samples,
+                    num_chains=num_chains)
         mcmc.run(jax.random.PRNGKey(0), k_gcns, n_gcns, idx_mod_gcns, idx_sel_gcns,
                  max_idx_mod_gcns, max_idx_sel_gcns, completeness_gcns,
                  k_data, n_data, idx_mod_data_j, completeness_data, idx_k_zero, jax.random.PRNGKey(666))
