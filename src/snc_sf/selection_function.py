@@ -426,7 +426,7 @@ class SNCSelectionFunction(object):
             Where in the filter data both selection function and model indexes
             are valid.
         """
-       # do the indexing for the filtered data
+       # do the indexing for the filtered data based on n samples
         bin_edges = []
         for key in self.sf_bins.keys():
             if key == 'healpix':
@@ -439,63 +439,153 @@ class SNCSelectionFunction(object):
         idx_sel_data, valid_sel_data, max_idx_sel_data = calc_1d_index(bin_idx, bin_edges)
 
         bin_edges = [len(np.arange(*self.sf_bins['g_rp'])) - 1,
-                     len(np.arange(*self.MG_bins)) - 1]
+                    len(np.arange(*self.MG_bins)) - 1]
 
-        bin_idx = [filter_data['g_rp_'].to_numpy(),
-                   filter_data['MG_'].to_numpy()]
-
-        idx_mod_data, valid_mod_data, max_idx_mod_data = calc_1d_index(bin_idx, bin_edges)
+        idx_mod_data = np.zeros((self.nsamps, len(filter_data)), dtype=int)
+        valid_mod_data = np.zeros((self.nsamps, len(filter_data)), dtype=bool)
+        for i in range(self.nsamps):
+            if self.mean:
+                bin_idx = [filter_data['g_rp_'].to_numpy(),
+                           filter_data['MG_'].to_numpy()]
+            else:
+                MGi = filter_data['phot_g_mean_mag'].to_numpy() + 5 * np.log10(1e-3 * 1 / filter_data[f'Dist{i + 1}'].to_numpy()) + 5
+                MGi_ = np.digitize(MGi, np.arange(*self.MG_bins)) - 1
+                bin_idx = [filter_data['g_rp_'].to_numpy(),
+                           MGi_]
+            
+            idx_mod_data[i], valid_mod_data[i], max_idx_mod_data = calc_1d_index(bin_idx, bin_edges)
+            # make invalid if parallax < 10
+            if not self.mean:
+                valid_mod_data[i][ 1 / filter_data[f'Dist{i + 1}'].to_numpy() < 10] = False
 
         ev_valid = valid_sel_data & valid_mod_data
-        idx_mod_data_j = jnp.asarray(idx_mod_data[ev_valid], dtype=jnp.int32)
-        idx_sel_data_j = jnp.asarray(idx_sel_data[ev_valid], dtype=jnp.int32)
+        idx_mod_data_j = jnp.asarray(idx_mod_data, dtype=jnp.int32)
+        idx_sel_data_j = jnp.asarray(idx_sel_data, dtype=jnp.int32)
+        ev_valid_j = jnp.asarray(ev_valid)
+
+        # now create the samples for the GCNS
+        bin_edges = []
+        for key in self.sf_bins.keys():
+            if key == 'healpix':
+                bin_edges.append(hp.order2npix(self.sf_bins['healpix']))
+            else:
+                bin_edges.append(len(np.arange(*self.sf_bins[key])) - 1)
+
+        bin_idx = [self.gcns[f'{key}_'].to_numpy() for key in self.sf_bins.keys()]
+
+        idx_sel_gcns, valid_sel_gcns, max_idx_sel_gcns = calc_1d_index(bin_idx, bin_edges)
+
+        bin_edges = [len(np.arange(*self.sf_bins['g_rp'])) - 1,
+                    len(np.arange(*self.MG_bins)) - 1]
+
+        idx_mod_gcns = np.zeros((self.nsamps, len(self.gcns)), dtype=int)
+        valid_mod_gcns = np.zeros((self.nsamps, len(self.gcns)), dtype=bool)
+        for i in range(self.nsamps):
+            if self.mean:
+                bin_idx = [self.gcns['g_rp_'].to_numpy(),
+                           self.gcns['MG_'].to_numpy()]
+            else:
+                MGi = self.gcns['phot_g_mean_mag'].to_numpy() + 5 * np.log10(1e-3 * 1 / self.gcns[f'Dist{i + 1}'].to_numpy()) + 5
+                MGi_ = np.digitize(MGi, np.arange(*self.MG_bins)) - 1
+                bin_idx = [self.gcns['g_rp_'].to_numpy(),
+                           MGi_]
+            
+            idx_mod_gcns[i], valid_mod_gcns[i], max_idx_mod_gcns = calc_1d_index(bin_idx, bin_edges)
+            # make invalid if parallax < 10
+            if not self.mean:
+                valid_mod_gcns[i][1 / self.gcns[f'Dist{i + 1}'].to_numpy() < 10] = False
+
+        ev_valid_gcns = valid_sel_gcns & valid_mod_gcns
+        idx_mod_gcns_j = jnp.asarray(idx_mod_gcns, dtype=jnp.int32)
+        idx_sel_gcns_j = jnp.asarray(idx_sel_gcns, dtype=jnp.int32)
+        ev_valid_gcns_j = jnp.asarray(ev_valid_gcns)
         
         ### OPTIMIZE MCMC ###
-        def model(k_gcns, n_gcns, idx_mod_gcns, idx_sel_gcns, max_idx_mod_gcns, max_idx_sel_gcns, completeness_gcns,
-                  k_data, n_data, idx_mod_data, completeness_data, idx_k_zero, rng_key):
+        def model(k_gcns, n_gcns, idx_mod_gcns, idx_sel_gcns, max_idx_mod_gcns, max_idx_sel_gcns, ev_valid_gcns, completeness_gcns,
+                  k_data, n_data, idx_mod_data, ev_valid_data, completeness_data, idx_k_zero, rng_key):
             with numpyro.plate("p_plate", max_idx_mod_data):  # this only works if self.weight_volume is Flase
                 p = numpyro.sample("p", dist.Uniform(0.0, 1.0))
+
+            # get the sample indicies
+            rng_key, key_sample = jax.random.split(rng_key)
+            samp_gcns = jax.random.randint(key_sample, shape=(idx_mod_gcns.shape[1]), minval=0, maxval=idx_mod_gcns.shape[0])
+            samp_data = jax.random.randint(key_sample, shape=(idx_mod_data.shape[1]), minval=0, maxval=idx_mod_data.shape[0])
+
+            idx_mod_gcns_sel = idx_mod_gcns[samp_gcns, jnp.arange(idx_mod_gcns.shape[1])]
+            idx_mod_data_sel = idx_mod_data[samp_data, jnp.arange(idx_mod_data.shape[1])]
+            ev_valid_gcns_sel = ev_valid_gcns[samp_gcns, jnp.arange(idx_mod_gcns.shape[1])]
+            ev_valid_data_sel = ev_valid_data[samp_data, jnp.arange(idx_mod_data.shape[1])]
+
+            # set to zero for invalid
+            idx_mod_gcns_sel = jnp.where(ev_valid_gcns_sel, idx_mod_gcns_sel, 0)
+            idx_sel_gcns = jnp.where(ev_valid_gcns_sel, idx_sel_gcns, 0)
+            idx_mod_data_sel = jnp.where(ev_valid_data_sel, idx_mod_data_sel, 0)
+
+            # get the selection function
             rng_key, key_gcns = jax.random.split(rng_key)
             S_gcns = jax.random.beta(key_gcns, k_gcns + 1, n_gcns - k_gcns + 1) * \
                      completeness_gcns
+            # weight invalid to zeros
             S_gcns = S_gcns.at[idx_k_zero].set(0.)
+            S_gcns = jnp.where(ev_valid_gcns_sel, S_gcns, 0.0)
+
 
             rng_key, key_data = jax.random.split(rng_key)
             S_data = jax.random.beta(key_data, k_data + 1, n_data - k_data + 1) * \
                      completeness_data
+            # weight invalid to zeros
+            S_data = jnp.where(ev_valid_data_sel, S_data, 0.0)
             
-            A_jk = build_effective_sel_factor(idx_mod_gcns,
+            A_jk = build_effective_sel_factor(idx_mod_gcns_sel,
                                               idx_sel_gcns,
                                               S_gcns,
                                               max_idx_mod_gcns,
                                               max_idx_sel_gcns)
 
             log_like = compute_single_loglike(p, A_jk,
-                                              S_data, idx_mod_data)
+                                              S_data, idx_mod_data_sel)
             numpyro.factor("marginal_loglike", log_like)
 
         # setup data for MCMC model
-        k_gcns = jnp.array(self.gcns['k'].to_numpy()[self.gcns_valid])
-        n_gcns = jnp.array(self.gcns['n'].to_numpy()[self.gcns_valid])
-        idx_mod_gcns = self.idx_mod_gcns[self.gcns_valid]
-        idx_sel_gcns = self.idx_sel_gcns[self.gcns_valid]
-        max_idx_mod_gcns = self.max_idx_mod_gcns
-        max_idx_sel_gcns = self.max_idx_sel_gcns
-        completeness_gcns = jnp.array(self.gcns['completeness'].to_numpy()[self.gcns_valid])
-        k_data = jnp.array(filter_data['k'].to_numpy()[ev_valid])
-        n_data = jnp.array(filter_data['n'].to_numpy()[ev_valid])
-        completeness_data = jnp.array(filter_data['completeness'].to_numpy()[ev_valid])
+        k_gcns = jnp.array(self.gcns['k'].to_numpy())
+        n_gcns = jnp.array(self.gcns['n'].to_numpy())
+        completeness_gcns = jnp.array(self.gcns['completeness'].to_numpy())
+        k_data = jnp.array(filter_data['k'].to_numpy())
+        n_data = jnp.array(filter_data['n'].to_numpy())
+        completeness_data = jnp.array(filter_data['completeness'].to_numpy())
         idx_k_zero = jnp.where(k_gcns == 0)
 
         # run MCMC
         nuts_kernel = NUTS(model)
         mcmc = MCMC(nuts_kernel, num_warmup=num_warmup, num_samples=num_samples,
                     num_chains=num_chains)
-        mcmc.run(jax.random.PRNGKey(0), k_gcns, n_gcns, idx_mod_gcns, idx_sel_gcns,
-                 max_idx_mod_gcns, max_idx_sel_gcns, completeness_gcns,
-                 k_data, n_data, idx_mod_data_j, completeness_data, idx_k_zero, jax.random.PRNGKey(666))
+        mcmc.run(jax.random.PRNGKey(0), k_gcns, n_gcns, idx_mod_gcns_j, idx_sel_gcns_j,
+                 max_idx_mod_gcns, max_idx_sel_gcns, ev_valid_gcns_j, completeness_gcns,
+                 k_data, n_data, idx_mod_data_j, ev_valid_j, completeness_data, idx_k_zero, jax.random.PRNGKey(666))
         samples = mcmc.get_samples()
 
         p_samples = samples['p']
+
+        # get just the unsample 1d valid for the return
+        bin_edges = []
+        for key in self.sf_bins.keys():
+            if key == 'healpix':
+                bin_edges.append(hp.order2npix(self.sf_bins['healpix']))
+            else:
+                bin_edges.append(len(np.arange(*self.sf_bins[key])) - 1)
+
+        bin_idx = [filter_data[f'{key}_'].to_numpy() for key in self.sf_bins.keys()]
+
+        _, valid_sel_data, _ = calc_1d_index(bin_idx, bin_edges)
+
+        bin_edges = [len(np.arange(*self.sf_bins['g_rp'])) - 1,
+                    len(np.arange(*self.MG_bins)) - 1]
+
+        bin_idx = [filter_data['g_rp_'].to_numpy(),
+                    filter_data['MG_'].to_numpy()]
+            
+        _, valid_mod_data, _ = calc_1d_index(bin_idx, bin_edges)
+
+        ev_valid = valid_sel_data & valid_mod_data
         
         return p_samples, ev_valid
