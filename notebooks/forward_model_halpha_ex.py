@@ -51,7 +51,7 @@ if __name__ == '__main__':
         data_LF[cols_save].write_csv('LF_snc_forward_data.csv')
 
     # initialize with LF dataset
-    mean = True
+    mean = False
     sf = SNCSelectionFunction('LF_snc_forward_data.csv', sf_bins, MG_bin_list, mean=mean)
 
     # get A_jks
