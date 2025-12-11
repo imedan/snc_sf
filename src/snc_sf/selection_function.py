@@ -393,6 +393,31 @@ class SNCSelectionFunction(object):
             self.A_jks.append(Ajk)
 
 
+    def estimate_beta_prior(self,
+                            filter_data: pl.DataFrame) -> int:
+        """
+        Estimate the parameters for the beta prior for
+        the forward model
+
+        Parameters
+        ----------
+        filter_data: pl.DataFrame
+            The filtered dataset of self.data for the subpopulation
+
+        Returns
+        -------
+        beta_param: int
+            The beta value for the beta distribution prior
+        """
+        # set some floor to avoid being too peaky
+        observed_frac = max(len(filter_data) / len(self.data), 0.01)
+
+        # have the mean be equal to the fraction above
+        beta_param = max(2, int((1 - observed_frac) / observed_frac))
+
+        return beta_param
+
+
     def forward_model(self,
                       filter_data: pl.DataFrame,
                       num_warmup: int = 500,
@@ -502,9 +527,9 @@ class SNCSelectionFunction(object):
         
         ### OPTIMIZE MCMC ###
         def model(k_gcns, n_gcns, idx_mod_gcns, idx_sel_gcns, max_idx_mod_gcns, max_idx_sel_gcns, ev_valid_gcns, completeness_gcns,
-                  k_data, n_data, idx_mod_data, ev_valid_data, completeness_data, idx_k_zero, rng_key):
+                  k_data, n_data, idx_mod_data, ev_valid_data, completeness_data, idx_k_zero, beta_param, rng_key):
             with numpyro.plate("p_plate", max_idx_mod_data):  # this only works if self.weight_volume is Flase
-                p = numpyro.sample("p", dist.Uniform(0.0, 1.0))
+                p = numpyro.sample("p", dist.Beta(1, beta_param))
 
             # get the sample indicies
             rng_key, key_sample = jax.random.split(rng_key)
@@ -555,13 +580,18 @@ class SNCSelectionFunction(object):
         completeness_data = jnp.array(filter_data['completeness'].to_numpy())
         idx_k_zero = jnp.where(k_gcns == 0)
 
+        # get beta_param_prior
+        beta_param = self.estimate_beta_prior(filter_data)
+        print(f"Running with beta_param = {beta_param}")
+
         # run MCMC
         nuts_kernel = NUTS(model)
         mcmc = MCMC(nuts_kernel, num_warmup=num_warmup, num_samples=num_samples,
                     num_chains=num_chains)
         mcmc.run(jax.random.PRNGKey(0), k_gcns, n_gcns, idx_mod_gcns_j, idx_sel_gcns_j,
                  max_idx_mod_gcns, max_idx_sel_gcns, ev_valid_gcns_j, completeness_gcns,
-                 k_data, n_data, idx_mod_data_j, ev_valid_j, completeness_data, idx_k_zero, jax.random.PRNGKey(666))
+                 k_data, n_data, idx_mod_data_j, ev_valid_j, completeness_data, idx_k_zero,
+                 beta_param, jax.random.PRNGKey(666))
         samples = mcmc.get_samples()
 
         p_samples = samples['p']
