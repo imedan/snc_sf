@@ -229,12 +229,12 @@ class SNCSelectionFunction(object):
                                    how='left')
         
         # zero out k = 0 things
-        self.gcns = self.gcns.with_columns(
-            pl.when(pl.col("k") == 0)
-            .then(pl.lit([0.] * self.nsamps).cast(pl.Array(pl.Float64, self.nsamps)))
-            .otherwise(pl.col("pselect_samps"))
-            .alias("pselect_samps")
-        )
+        # self.gcns = self.gcns.with_columns(
+        #     pl.when(pl.col("k") == 0)
+        #     .then(pl.lit([0.] * self.nsamps).cast(pl.Array(pl.Float64, self.nsamps)))
+        #     .otherwise(pl.col("pselect_samps"))
+        #     .alias("pselect_samps")
+        # )
 
         # get the emperical Gaia DR3 selection function
         mapHpx7 = DR3SelectionFunctionTCG()
