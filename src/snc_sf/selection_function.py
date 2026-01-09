@@ -65,6 +65,11 @@ class SNCSelectionFunction(object):
     calc_SF: bool
         Calculate selection function when initializing
 
+    pre_filt: polars.expr.expr.Expr | None
+        If you want to apply some pre filtering to the GCNS. This
+        will effect what the total sample is. Example could be removing
+        possible non-single stars with a RUWE cut.
+
     Attributes
     ----------
     data: pl.DataFrame
@@ -114,7 +119,8 @@ class SNCSelectionFunction(object):
                  MG_bins: list,
                  RNG: np.random._generator.Generator = np.random.default_rng(666),
                  mean: bool = False,
-                 calc_SF: bool = True):
+                 calc_SF: bool = True,
+                 pre_filt: pl.expr.expr.Expr | None = None):
         # check if GCNS files exist
         if not os.path.isfile(files('snc_sf.sf_files') / 'GCNS-result.csv'):
             warnings.warn("Selected GCNS stars file not available! Downloading from Vizier")
@@ -134,10 +140,17 @@ class SNCSelectionFunction(object):
         self.sf_file = open_binary('snc_sf.sf_files', 'GCNS-result.csv').name
         
         self.gcns = pl.read_csv(self.sf_file)
+
+        # do any prefiltering
+        if pre_filt is not None:
+            self.gcns = self.gcns.filter(pre_filt)
+
+        # get the distance PDF
         self.gcns = self.gcns.join(
             pl.read_csv(open_binary('snc_sf.sf_files', 'GNSC_distpdf.csv').name),
             left_on='source_id', right_on='GaiaEDR3')
 
+        # get values for binning
         self.coord_gcns = SkyCoord(ra=np.array(self.gcns['ra']) * u.deg,
                                    dec=np.array(self.gcns['dec']) * u.deg,
                                    frame='icrs')
