@@ -180,6 +180,7 @@ class SNCSelectionFunction(object):
                           'phot_g_mean_mag', 'phot_g_mean_flux_over_error']
         for nc in needed_columns:
             if nc in self.data.columns:  # delete if exists
+                warnings.warn(f"Replacing user supplied {nc} column with data from GCNS.")
                 self.data = self.data.drop(nc)
             # join needed column
             self.data = self.data.join(self.gcns[['source_id', nc]],
