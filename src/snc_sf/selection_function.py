@@ -174,6 +174,17 @@ class SNCSelectionFunction(object):
         self.data = pl.read_csv(data_file)
         self.data = self.data.filter(np.isin(self.data['source_id'], self.gcns['source_id']))
 
+        # grab the needed columns from GCNS
+        needed_columns = ['ra', 'ra_error', 'dec', 'dec_error',
+                          'parallax', 'parallax_error', 'g_rp',
+                          'phot_g_mean_mag', 'phot_g_mean_flux_over_error']
+        for nc in needed_columns:
+            if nc in self.data.columns:  # delete if exists
+                self.data = self.data.drop(nc)
+            # join needed column
+            self.data = self.data.join(self.gcns[['source_id', nc]],
+                                       on='source_id')
+        
         # calculate error in G mag
         sigmaG_0 = 0.0027553202
         e_Gmag   = np.sqrt((-2.5 / np.log(10) * self.data['phot_g_mean_flux_over_error'] ** -1) ** 2 + sigmaG_0**2)
