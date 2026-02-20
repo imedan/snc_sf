@@ -20,6 +20,9 @@ from scipy.optimize import minimize
 
 
 def mass_est(MK, *args, feh=None):
+    """
+    Get mass based on Mann 2019 relation
+    """
     if feh is None:
         mass = 10 ** np.polyval(args[::-1], MK - 7.5)
     else:
@@ -32,10 +35,18 @@ def mass_est(MK, *args, feh=None):
 
 def _parse_params(params: list) -> Tuple[float, float, float, float, bool]:
     """
-    Accepts params as length 2 or 4:
-      [logC, alpha]            -> single power law
-      [logC, alpha1, alpha2, log_mb] -> broken power law
-    Returns parsed params
+    Parse params for both single and broken power law
+
+    Parameters
+    ---------
+    params: list
+        of length 2 or 4. [logC, alpha] for single power law.
+        logC, alpha1, alpha2, log_mb] for broken power law
+
+    Returns
+    -------
+    Returns parsed params and if broken or not. mb = inf if
+    single power law
     """
     p = np.asarray(params, dtype=float)
     if p.size == 2:
@@ -58,7 +69,7 @@ def _parse_params(params: list) -> Tuple[float, float, float, float, bool]:
 def xi_from_params(params: list | np.ndarray, m: np.ndarray):
     """
     Return xi(m) = dN/dm value(s) for array-like m using params.
-    Accepts 2 or 4 parameter forms.
+    Accepts 2 or 4 parameter forms (single or broken power law).
     """
     C, alpha1, alpha2, mb, is_broken = _parse_params(params)
     m = np.asarray(m, dtype=float)
@@ -75,8 +86,7 @@ def xi_from_params(params: list | np.ndarray, m: np.ndarray):
 @jax.jit
 def _integral_power_law_jax(a, b, C, alpha):
     """
-    Integral of C * m^{-alpha} dm from a to b, JAX-compatible.
-    Uses jnp.where to avoid branching on traced values.
+    Integral of C * m^{-alpha} dm from a to b
     """
     # alpha == 1 case: C * log(b/a)
     # alpha != 1 case: C / (1 - alpha) * (b^(1-alpha) - a^(1-alpha))
@@ -89,34 +99,43 @@ def _integral_power_law_jax(a, b, C, alpha):
 @jax.jit
 def model_bin_density_jax(edges: jnp.ndarray, params: jnp.ndarray) -> jnp.ndarray:
     """
-    JAX model bin density for a single params vector [logC, alpha1, alpha2, log_mb].
-    All branching is done with jnp.where so this is fully JIT/vmap-compatible.
+    Model the bin density of a MF that follows a single or
+    broken power law
 
-    edges : shape (N+1,)  — bin edges
-    params: shape (4,)    — [logC, alpha1, alpha2, log_mb]
-    returns: shape (N,)   — average differential density per bin
+    Parameters
+    -----------
+    edges: jnp.ndarray
+        bin edges of the histogram. Must be linear!
+    
+    params: jnp.ndarray
+        power law parameters of [logC, alpha1, alpha2, log_mb].
+        if mb is inf, then single power law
+
+    Returns
+    --------
+    y_model: jnp.ndarray
+        average differential density per bin
     """
     logC, alpha1, alpha2, log_mb = params[0], params[1], params[2], params[3]
-    C  = 10.0**logC
-    mb = 10.0**log_mb
+    C  = 10.0 ** logC
+    mb = 10.0 ** log_mb
 
-    lo = edges[:-1]   # (N,)
-    hi = edges[1:]    # (N,)
+    lo = edges[:-1]
+    hi = edges[1:]
     width = hi - lo
 
     # Continuity factor so the two power laws join at mb
-    C2 = C * (mb**(alpha2 - alpha1))
+    C2 = C * (mb ** (alpha2 - alpha1))
 
-    # ---- bins fully below break (hi <= mb) ----
+    # bins below break
     integral_below = _integral_power_law_jax(lo, hi, C, alpha1)
     y_below = integral_below / width
 
-    # ---- bins fully above break (lo >= mb) ----
+    # bins above break
     integral_above = _integral_power_law_jax(lo, hi, C2, alpha2)
     y_above = integral_above / width
 
-    # ---- bins that straddle the break ----
-    # clamp integration limits so they're valid even when this bin doesn't straddle
+    # bins at break
     lo_clamp = jnp.minimum(lo, mb)
     hi_clamp = jnp.maximum(hi, mb)
     integral_cross = (
@@ -125,11 +144,9 @@ def model_bin_density_jax(edges: jnp.ndarray, params: jnp.ndarray) -> jnp.ndarra
     )
     y_cross = integral_cross / width
 
-    # Select the right case per bin using jnp.where (no Python branching)
+    # select right cases based on binning
     below_mask = hi <= mb
     above_mask = lo >= mb
-    # straddle = not below and not above
-
     y_model = jnp.where(below_mask, y_below,
                jnp.where(above_mask, y_above,
                          y_cross))
@@ -139,23 +156,33 @@ def model_bin_density_jax(edges: jnp.ndarray, params: jnp.ndarray) -> jnp.ndarra
 @jax.jit
 def obj_logsq_jax(params: jnp.ndarray, edges: jnp.ndarray, y: jnp.ndarray) -> jnp.ndarray:
     """
-    JAX objective: sum of squared log residuals.
-    Returns a large value (1e9) where y or ymod are non-positive via jnp.where.
+    Objective function for MF model
 
-    params: (4,)
-    edges:  (N+1,)
-    y:      (N,)
+     Parameters
+    -----------
+    edges: jnp.ndarray
+        bin edges of the histogram. Must be linear!
+    
+    params: jnp.ndarray
+        power law parameters of [logC, alpha1, alpha2, log_mb].
+        if mb is inf, then single power law
+    
+    y: jnp.ndarray
+        observed density
+    
+    Returns
+    -------
+    log squared difference between observations and model
     """
     ymod = model_bin_density_jax(edges, params)
 
     # Valid mask: both y and ymod positive
     valid = (y > 0) & (ymod > 0)
 
-    log_resid_sq = jnp.where(valid, (jnp.log(y) - jnp.log(ymod))**2, 0.0)
+    log_resid_sq = jnp.where(valid, (jnp.log(y) - jnp.log(ymod)) ** 2, 0.0)
     loss = jnp.sum(log_resid_sq)
 
     # If no valid points at all, return a large penalty
-    # (jnp.where keeps this differentiable)
     return jnp.where(jnp.any(valid), loss, 1e9)
 
 
@@ -171,14 +198,23 @@ def fit_broken_powerlaw_batch(
 
     Parameters
     ----------
-    Nmass_boot : (size, n_bins)  — one histogram per row
-    mass_bins  : (n_bins+1,)    — bin edges
-    p0         : (4,)           — initial guess (numpy)
-    bounds     : list of (lo, hi) tuples, length 4
+    Nmass_boot: np.ndarray
+        bootstrap of MFs, of shape (size, n_bins)
+
+    mass_bins: np.ndarray
+        bin edges of historgam of MF
+
+    p0: np.ndarray
+        initial guess for power law
+
+    bounds: list
+        list of (lo, hi) tuples, length 4
 
     Returns
     -------
-    params_boot : (size, 4) numpy array
+    params_boot: np.ndarray
+        power law parameters for each bootstrap
+        of shape (size, 4)
     """
     edges = jnp.array(mass_bins, dtype=jnp.float64)
     Y     = jnp.array(Nmass_boot, dtype=jnp.float64)   # (size, n_bins)
@@ -192,7 +228,6 @@ def fit_broken_powerlaw_batch(
     upper = jnp.array([b[1] for b in bounds], dtype=jnp.float64)
 
     # Build the jaxopt solver.
-    # fun receives (params, y_row) — y_row is the per-sample "hyperparameter"
     solver = jaxopt.LBFGSB(
         fun=obj_logsq_jax,
         maxiter=500,
@@ -217,7 +252,9 @@ def fit_broken_powerlaw_batch(
 
 
 if __name__ == '__main__':
-    # set up bins and filtering
+    # =============================
+    # SET UP DATA FOR FORWARD MODEL
+    # =============================
     MG_bin_list = [0, 20, 0.25]
 
     sf_bins={'healpix': 3,
@@ -277,7 +314,9 @@ if __name__ == '__main__':
                     'fe_h_corr']
         data_slam[cols_save].write_csv('aspcap_slam_fe_h_corr_snc_forward_data.csv')
 
-    # setup the forward model
+    # =======================================
+    # RUN THE FORWARD MODEL FOR EACH FE/H BIN
+    # =======================================
     mean = False
     sf = SNCSelectionFunction('aspcap_slam_fe_h_corr_snc_forward_data.csv',
                               sf_bins, MG_bin_list,
@@ -297,9 +336,9 @@ if __name__ == '__main__':
     for i in range(len(fe_h_bins) - 1):
         filter_data = sf.data.filter((pl.col('fe_h_corr') > fe_h_bins[i]) & (pl.col('fe_h_corr') <= fe_h_bins[i + 1]))
         p_samples, ev_valid = sf.forward_model(filter_data,
-                                               num_warmup=500,
-                                               num_samples=1000,
-                                               num_chains=1)
+                                               num_warmup=5000,
+                                               num_samples=2000,
+                                               num_chains=2)
 
         feh_data.append(filter_data)
         p_samples_feh.append(p_samples)
@@ -307,7 +346,9 @@ if __name__ == '__main__':
 
     RNG = np.random.default_rng(666)
 
-    # get mass from Mann relation
+    # =======================================
+    # ESTIMATE MASS FOR GCNS USING MANN 2019
+    # =======================================
     args = np.array([-0.642, -0.208, -8.43e-4, 7.78e-3, 1.42e-3, -2.13e-4])
     args_mh = np.array([-0.647, -0.207, -6.53e-4, 7.13e-3, 1.84e-5, -2.13e-4, -0.0035])
 
@@ -327,7 +368,9 @@ if __name__ == '__main__':
     mass_gcns = interp(sf.gcns['MG'].to_numpy(), sf.gcns['MBP'].to_numpy(), sf.gcns['MRP'].to_numpy())
     sf.gcns = sf.gcns.with_columns(mass=mass_gcns)
 
-    # now get the mass function and fit broken power law to it
+    # ======================================================
+    # FIT MASS FUNCTION OF EACH SAMPLE WITH BROKEN POWER LAW
+    # ======================================================
     gcns_filter = sf.gcns.filter(pl.Series(sf.gcns_valid))
     Ntot, _, _ = np.histogram2d(gcns_filter['g_rp'].to_numpy(), gcns_filter['MG'].to_numpy(),
                                 bins=[g_rp_bins, MG_bins])
@@ -355,10 +398,12 @@ if __name__ == '__main__':
 
         Nmass_boot = np.zeros((Nboot.shape[0], sf.data['Veff_samps'].to_numpy().shape[1], len(mass_bins) - 1))
         
-        # boot strap the mass function
+        # boot strap the mass function using each sample of chain
+        # and each Vmax value
         for j in range(len(Nboot)):
             ndesire = Nboot[j].ravel()
             sids_j = []
+            # randomlly select GCNS based on p_sub
             for k in range(len(ndesire)):
                 if ndesire[k] > 0:
                     sids_j += list(RNG.choice(source_ids[evs[k]], ndesire[k], replace=False))
@@ -367,7 +412,7 @@ if __name__ == '__main__':
 
             # digitze bins
             ev_mass = (massesj >= mass_bins[0]) & \
-                    (massesj < mass_bins[-1])
+                      (massesj < mass_bins[-1])
             bin_indices = np.digitize(massesj[ev_mass], mass_bins) - 1
 
             # bright the weights back to all sky
@@ -454,7 +499,9 @@ if __name__ == '__main__':
                     bbox_inches='tight')
         plt.close()
 
-    # make plots of the fitted parameters
+    # =====================
+    # PLOT AND SAVE RESULTS
+    # =====================
     label = [r'$\alpha_1$', r'$\alpha_2$', r'$m_b$']
     savename = ['alpha_1', 'alpha_2', 'mb']
     for pi in range(1, 4):
