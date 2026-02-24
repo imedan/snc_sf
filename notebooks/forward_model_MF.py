@@ -328,7 +328,7 @@ if __name__ == '__main__':
     MG_bins = np.arange(*MG_bin_list)
 
     # run the forward model
-    fe_h_bins = np.array([-0.6, -0.3, -0.15, -0.075, 0., 0.075, 0.2])
+    fe_h_bins = np.array([-0.6, -0.3, -0.15, -0.05, 0.05, 0.2])
     feh_data = []
     p_samples_feh = []
     ev_valid_feh = []
@@ -453,7 +453,7 @@ if __name__ == '__main__':
         approx_C = np.max(y_valid) * np.mean(np.diff(x)) if len(y_valid) > 0 else 1e-3
         p0 = [np.log10(max(approx_C, 1e-6)), 1.0, 2.5, np.log10(0.5)]
         bounds = [(-20, 20), (-10, 10.0), (-10, 10),
-                  (np.log10(0.3), np.log10(0.7))]
+                  (np.log10(0.3), np.log10(0.5))]
         
         res = minimize(
             lambda p, edges, y: float(obj_logsq_jax(jnp.array(p), jnp.array(edges), jnp.array(y))),
