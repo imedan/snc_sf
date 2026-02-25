@@ -390,7 +390,7 @@ if __name__ == '__main__':
     Nmasses = []
     params = []
 
-    mass_bins = np.linspace(0.2, 0.7, 13)
+    mass_bins = np.linspace(0.2, 0.7, 9)
 
     for i in trange(len(feh_data)):
         # get the number in HR diagram space based on draws
