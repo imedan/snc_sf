@@ -1,4 +1,4 @@
-name: Tests
+name: Test Python 3.13
 
 on:
   push:
