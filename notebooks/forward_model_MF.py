@@ -275,7 +275,7 @@ if __name__ == '__main__':
     if not os.path.isfile('aspcap_slam_fe_h_corr_snc_forward_data.csv'):
         # initilize
         mean = True
-        data_file = '../../obs_100pc_edr3.csv'
+        data_file = 'obs_100pc_edr3.csv'
         sf = SNCSelectionFunction(data_file,
                                 sf_bins,
                                 MG_bin_list,
@@ -283,7 +283,7 @@ if __name__ == '__main__':
                                 pre_filt=pre_filt)
         
         # load the metallicity data
-        tbl = Table.read('../../../DR19/astraFrankenstein-0.6.0.fits', hdu=1)
+        tbl = Table.read('../../../DR19/astraFrankenstein-0.6.0.fits', hdu=1)  # can download here: https://data.sdss.org/sas/dr19/spectro/astra/0.6.0/summary/astraMWMLite-0.6.0.fits.gz
         names = [name for name in tbl.colnames if len(tbl[name].shape) <= 1]
         slam = pl.from_pandas(tbl[names].to_pandas())
 

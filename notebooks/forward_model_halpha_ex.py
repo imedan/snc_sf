@@ -28,18 +28,18 @@ if __name__ == '__main__':
 
 
     if not os.path.isfile('LF_snc_forward_data.csv'):
-        data_file = '../../obs_100pc_edr3.csv'
+        data_file = 'obs_100pc_edr3.csv'
 
         # initilize
         mean = False
         sf = SNCSelectionFunction(data_file, sf_bins, MG_bin_list, mean=mean)
 
         # cross match with lineforest
-        tbl = Table.read('../../../DR19/astraAllStarLineForest-0.6.0.fits', hdu=1)
+        tbl = Table.read('../../../DR19/astraAllStarLineForest-0.6.0.fits', hdu=1)  # can download here: https://data.sdss.org/sas/dr19/spectro/astra/0.6.0/summary/astraAllStarLineForest-0.6.0.fits.gz
         names = [name for name in tbl.colnames if len(tbl[name].shape) <= 1]
         LF = pl.from_pandas(tbl[names].to_pandas())
 
-        allstar = Table.read('../../../DR19/mwmAllStar-0.6.0.fits', hdu=1)
+        allstar = Table.read('../../../DR19/mwmAllStar-0.6.0.fits', hdu=1)  # can download here: https://data.sdss.org/sas/dr19/spectro/astra/0.6.0/summary/mwmAllStar-0.6.0.fits.gz
 
         data_LF = sf.data.filter(pl.col('source_id').is_in(allstar['gaia_dr3_source_id'])).join(LF, left_on='source_id', right_on='gaia_dr3_source_id', how='left')
         data_LF = data_LF.unique('source_id', keep='last')
