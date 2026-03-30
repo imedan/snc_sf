@@ -24,4 +24,11 @@ To fully utilize the code, SDSS-V and GCNS data is need. The SDSS-V DR19 `astra`
 
 ## Examples
 
-A number of examples using the code are located in [`notebooks/`](https://github.com/imedan/snc_sf/tree/main/notebooks). These examples are fully explained in the paper accompanying this work.
+A number of examples using the code are located in [`notebooks/`](https://github.com/imedan/snc_sf/tree/main/notebooks). These examples are fully explained in the paper accompanying this work. In summary, the examples included related to the following:
+- [`dr19_obs.ipynb`](https://github.com/imedan/snc_sf/blob/main/notebooks/dr19_obs.ipynb): Constructs the base SNC 100 pc dataset and creates the plots in Figure 1 of the paper.
+- [`SF_example_plots.ipynb`](https://github.com/imedan/snc_sf/blob/main/notebooks/SF_example_plots.ipynb): Example of the selecrtion function for different regions on the sky, as shown in Figure 2 of the paper.
+- [`forward_model_GCNS_mock_proof.py`](https://github.com/imedan/snc_sf/blob/main/notebooks/forward_model_GCNS_mock_proof.py): Script that replicates the example with mock data in Section 4.1 and Figure 3 in the paper.
+- [`forward_model_halpha_ex.py`](https://github.com/imedan/snc_sf/blob/main/notebooks/forward_model_halpha_ex.py): Script that replicates the example examing the distribution of H-alpha emitters across the HR diagram in Section 4.2 and Figure 4 in the paper.
+- [`forward_model_MF.py`](https://github.com/imedan/snc_sf/blob/main/notebooks/forward_model_MF.py): Script that replicates the example that calculates the mass function in bins of metallicity in Section 4.3 in the paper.
+- [`plot_mf_results.py`](https://github.com/imedan/snc_sf/blob/main/notebooks/plot_mf_results.py): Script that creates the mass function plots in Figure 5 in the paper.
+- [`appendix_example.ipynb`](https://github.com/imedan/snc_sf/blob/main/notebooks/appendix_example.ipynb): Example to demonstrate basic code usage as illustrated in the Appendix of the paper.
