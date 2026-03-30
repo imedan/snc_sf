@@ -297,7 +297,7 @@ def calc_1d_index(bin_idx: list,
     """
     ns = np.array([be if isinstance(be, int) else len(be) - 1 for be in bin_edges])
 
-    idx_1d = np.ravel_multi_index(bin_idx, bin_edges, mode='clip')
+    idx_1d = np.ravel_multi_index(bin_idx, ns, mode='clip')
     
     max_idx = np.prod(ns)
 
