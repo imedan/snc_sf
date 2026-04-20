@@ -2,6 +2,7 @@ from astropy.coordinates import SkyCoord
 import astropy.units as u
 import healpy as hp
 import numpy as np
+from scipy.stats import beta
 import polars as pl
 from importlib.resources import open_binary, files
 import ast
@@ -351,4 +352,137 @@ def build_effective_sel_factor(model_idx: np.ndarray | ArrayImpl,
     A_jk = BCOO((weights, jnp.column_stack((sf_idx, model_idx))),
                  shape=(max_sf_idx, max_model_idx))
     return A_jk
+
+
+def kl_histogram(samples: np.ndarray | ArrayImpl,
+                  alpha: int, beta_param:int,
+                  bins: int = 50) -> float:
+    """
+    Perform a KL divergence test on data by binning.
+    Assumes that comparison sample is a beta distribution.
+
+    Parameters
+    ----------
+    samples: np.array | jaxlib._jax.ArrayImpl
+        Posterior samples from a MCMC. Needs to be 1D
+
+    alpha: int
+        Alpha value for beta distribution
+
+    beta_param: int
+        Beta value for beta distribution
     
+    bins: int
+        Number of bins between 0 and 1 to bin data
+    """
+    hist, edges = np.histogram(samples, bins=bins, range=(0,1), density=True)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+
+    q = beta.pdf(centers, alpha, beta_param)
+
+    eps = 1e-12
+    hist = np.clip(hist, eps, None)
+    q = np.clip(q, eps, None)
+
+    dx = edges[1] - edges[0]
+    kl = np.sum(hist * (np.log(hist) - np.log(q))) * dx
+    return kl
+
+
+def kl_divergence(samples: np.ndarray | ArrayImpl,
+                  alpha: int, beta_param:int,
+                  bins: int = 50,
+                  Nboot: int = 10000) -> Tuple[np.ndarray, float, float]:
+    """
+    Perform a KL divergence test on data by binning and
+    comapring to a sample distribution. Assumes that
+    comparison sample is a beta distribution.
+
+    Parameters
+    ----------
+    samples: np.array | jaxlib._jax.ArrayImpl
+        Posterior samples from a MCMC. If 2D,
+        assumes shape (Nsamples, Nparams)
+
+    alpha: int
+        Alpha value for beta distribution
+
+    beta_param: int
+        Beta value for beta distribution
+    
+    bins: int
+        Number of bins between 0 and 1 to bin data
+
+    Nboot: int
+        Number of bootstraps for baseline beta distirubtion
+
+    Returns
+    -------
+    kl_vals: np.array
+        KL divergence values in shape of (Nparams,)
+    
+    kl_mean: float
+        Mean of the bootstraps for the baseline
+    
+    kl_std: float
+        Standard deviation of the bootstraps for the baseline
+    """
+    # do KL divergence
+    if samples.ndim == 1:
+        kl_vals = np.array([kl_histogram(samples, alpha, beta_param, bins=bins)])
+    else:
+        kl_vals = np.zeros(samples.shape[1])
+        for i in range(samples.shape[1]):
+            kl_vals[i] = kl_histogram(samples[:, i], alpha, beta_param, bins=bins)
+
+    # get baseline
+    prior_samples = beta.rvs(alpha, beta_param, size=(Nboot, len(samples)))
+    kl_baseline = np.zeros(Nboot)
+    for i in range(Nboot):
+        kl_baseline[i] = kl_histogram(prior_samples[i], alpha, beta_param)
+    kl_mean = np.nanmean(kl_baseline)
+    kl_std = np.nanstd(kl_baseline)
+    return kl_vals, kl_mean, kl_std
+
+
+def mean_and_varriance_change(samples: np.ndarray | ArrayImpl,
+                              alpha: int, beta_param:int) -> Tuple[np.ndarray, np.ndarray, float]:
+    """
+    Calculate the mean and variance of
+    posterior samples compared to their beta
+    prior.
+
+    Parameters
+    ----------
+    samples: np.array | jaxlib._jax.ArrayImpl
+        Posterior samples from a MCMC. If 2D,
+        assumes shape (Nsamples, Nparams)
+
+    alpha: int
+        Alpha value for beta distribution
+
+    beta_param: int
+        Beta value for beta distribution
+
+    Returns
+    ------
+    sample_mean: np.ndarray
+        Sample mean, shape (Nparams,)
+    
+    sample_var: np.ndarray
+        Sample variance, shape (Nparams,)
+    
+    prior_mean: np.ndarray
+        mean of the beta prior
+    
+    prior_var: np.ndarray
+        varriance of beta prior
+    """
+    prior_var = (alpha * beta_param) / ((alpha + beta_param) ** 2 * (alpha + beta_param + 1))
+    sample_var = np.var(samples, axis=0)
+
+    prior_mean = alpha / (alpha + beta_param)
+    sample_mean = np.mean(samples, axis=0)
+
+    z = abs(sample_mean - prior_mean) / prior_var
+    return sample_mean, sample_var, prior_mean, prior_var
