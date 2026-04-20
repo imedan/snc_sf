@@ -392,7 +392,8 @@ def kl_histogram(samples: np.ndarray | ArrayImpl,
 def kl_divergence(samples: np.ndarray | ArrayImpl,
                   alpha: int, beta_param:int,
                   bins: int = 50,
-                  Nboot: int = 10000) -> Tuple[np.ndarray, float, float]:
+                  Nboot: int = 10000,
+                  random_state: int = 666) -> Tuple[np.ndarray, float, float]:
     """
     Perform a KL divergence test on data by binning and
     comapring to a sample distribution. Assumes that
@@ -415,6 +416,9 @@ def kl_divergence(samples: np.ndarray | ArrayImpl,
 
     Nboot: int
         Number of bootstraps for baseline beta distirubtion
+    
+    random_state: int
+        Random seed to pass to bootstrap samples
 
     Returns
     -------
@@ -436,7 +440,8 @@ def kl_divergence(samples: np.ndarray | ArrayImpl,
             kl_vals[i] = kl_histogram(samples[:, i], alpha, beta_param, bins=bins)
 
     # get baseline
-    prior_samples = beta.rvs(alpha, beta_param, size=(Nboot, len(samples)))
+    prior_samples = beta.rvs(alpha, beta_param, size=(Nboot, len(samples)),
+                             random_state=random_state)
     kl_baseline = np.zeros(Nboot)
     for i in range(Nboot):
         kl_baseline[i] = kl_histogram(prior_samples[i], alpha, beta_param)
