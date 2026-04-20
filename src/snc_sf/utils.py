@@ -446,7 +446,7 @@ def kl_divergence(samples: np.ndarray | ArrayImpl,
 
 
 def mean_and_varriance_change(samples: np.ndarray | ArrayImpl,
-                              alpha: int, beta_param:int) -> Tuple[np.ndarray, np.ndarray, float]:
+                              alpha: int, beta_param:int) -> Tuple[np.ndarray, np.ndarray, float, float]:
     """
     Calculate the mean and variance of
     posterior samples compared to their beta
@@ -472,10 +472,10 @@ def mean_and_varriance_change(samples: np.ndarray | ArrayImpl,
     sample_var: np.ndarray
         Sample variance, shape (Nparams,)
     
-    prior_mean: np.ndarray
+    prior_mean: float
         mean of the beta prior
     
-    prior_var: np.ndarray
+    prior_var: float
         varriance of beta prior
     """
     prior_var = (alpha * beta_param) / ((alpha + beta_param) ** 2 * (alpha + beta_param + 1))

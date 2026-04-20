@@ -28,7 +28,7 @@ except ModuleNotFoundError:
 
 from .utils import (coord2healpix, calculateSF, cal_veff,
                     calc_subsample_p, calc_1d_index, build_effective_sel_factor,
-                    download_gcns_data)
+                    download_gcns_data, kl_divergence, mean_and_varriance_change)
 from .optimize import sigmoid_inv, objective_jax_multi, compute_single_loglike
 
 
@@ -643,4 +643,76 @@ class SNCSelectionFunction(object):
 
         ev_valid = valid_sel_data & valid_mod_data
         
-        return p_samples, ev_valid
+        if check_prior_change:
+            alpha = 1.
+            kl_vals, kl_mean, kl_std = kl_divergence(p_samples, alpha, beta_param)
+            sample_mean, sample_var, prior_mean, prior_var = mean_and_varriance_change(p_samples, alpha, beta_param)
+
+            # check dist change
+            dist_change = np.zeros(len(kl_vals), dtype=bool)
+            z = abs(sample_mean - prior_mean) / prior_var
+            ev = (kl_vals - kl_mean > 5 * kl_std)  | (sample_var < prior_var * 0.9) | (z > 1)
+            dist_change[ev] = True
+            return p_samples, ev_valid, dist_change, kl_vals, kl_mean, kl_std, sample_mean, sample_var, prior_mean, prior_var
+        else:
+            return p_samples, ev_valid
+        
+    def check_posterior_samples(self, filter_data: pl.DataFrame,
+                                p_samples: ArrayImpl) -> Tuple[np.ndarray, np.ndarray,
+                                                               float, float,
+                                                               np.ndarray, np.ndarray,
+                                                               float, float]:
+        """
+        Check if the subpopulation probabilities resulting from
+        the MCMC are significantly different than thee beta prior.
+
+        Parameters
+        ---------
+        filter_data: pl.DataFrame
+            The filtered dataset of self.data for the subpopulation
+
+        p_samples: jaxlib._jax.ArrayImpl
+            The resulting posterior samples of HR diagram probability of the
+            subpopulation from the MCMC. This is of shape (samples, 1D raveled index).
+
+        Returns
+        -------
+        dist_change: np.array
+            Mask that says if the subpopulation probability in the 1D raveled index
+            has a posterior distribution significantly different than the prior (True).
+            Mask is based on if sample passes the criteria:
+            (kl_vals - kl_mean > 5 * kl_std)  | (sample_var < prior_var * 0.9) | (z > 1)
+        
+        kl_vals: np.array
+            KL divergence values in shape of (Nparams,).
+        
+        kl_mean: float
+            Mean of the bootstraps for the baseline.
+        
+        kl_std: float
+            Standard deviation of the bootstraps for the baseline.
+        
+        sample_mean: np.ndarray
+            Sample mean, shape (Nparams,).
+        
+        sample_var: np.ndarray
+            Sample variance, shape (Nparams,).
+        
+        prior_mean: float
+            mean of the beta prior.
+        
+        prior_var: float
+            varriance of beta prior.
+        """
+        beta_param = self.estimate_beta_prior(filter_data)
+
+        alpha = 1.
+        kl_vals, kl_mean, kl_std = kl_divergence(p_samples, alpha, beta_param)
+        sample_mean, sample_var, prior_mean, prior_var = mean_and_varriance_change(p_samples, alpha, beta_param)
+
+        # check dist change
+        dist_change = np.zeros(len(kl_vals), dtype=bool)
+        z = abs(sample_mean - prior_mean) / prior_var
+        ev = (kl_vals - kl_mean > 5 * kl_std)  | (sample_var < prior_var * 0.9) | (z > 1)
+        dist_change[ev] = True
+        return dist_change, kl_vals, kl_mean, kl_std, sample_mean, sample_var, prior_mean, prior_var
