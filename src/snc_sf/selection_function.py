@@ -643,19 +643,7 @@ class SNCSelectionFunction(object):
 
         ev_valid = valid_sel_data & valid_mod_data
         
-        if check_prior_change:
-            alpha = 1.
-            kl_vals, kl_mean, kl_std = kl_divergence(p_samples, alpha, beta_param)
-            sample_mean, sample_var, prior_mean, prior_var = mean_and_varriance_change(p_samples, alpha, beta_param)
-
-            # check dist change
-            dist_change = np.zeros(len(kl_vals), dtype=bool)
-            z = abs(sample_mean - prior_mean) / prior_var
-            ev = (kl_vals - kl_mean > 5 * kl_std)  | (sample_var < prior_var * 0.9) | (z > 1)
-            dist_change[ev] = True
-            return p_samples, ev_valid, dist_change, kl_vals, kl_mean, kl_std, sample_mean, sample_var, prior_mean, prior_var
-        else:
-            return p_samples, ev_valid
+        return p_samples, ev_valid
         
     def check_posterior_samples(self, filter_data: pl.DataFrame,
                                 p_samples: ArrayImpl) -> Tuple[np.ndarray, np.ndarray,
