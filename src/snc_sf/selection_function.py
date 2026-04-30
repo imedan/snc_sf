@@ -28,7 +28,7 @@ except ModuleNotFoundError:
 
 from .utils import (coord2healpix, calculateSF, cal_veff,
                     calc_subsample_p, calc_1d_index, build_effective_sel_factor,
-                    download_gcns_data, kl_divergence, mean_and_varriance_change)
+                    download_gcns_data, kl_divergence, mean_and_variance_change)
 from .optimize import sigmoid_inv, objective_jax_multi, compute_single_loglike
 
 
@@ -696,7 +696,7 @@ class SNCSelectionFunction(object):
 
         alpha = 1.
         kl_vals, kl_mean, kl_std = kl_divergence(p_samples, alpha, beta_param)
-        sample_mean, sample_var, prior_mean, prior_var = mean_and_varriance_change(p_samples, alpha, beta_param)
+        sample_mean, sample_var, prior_mean, prior_var = mean_and_variance_change(p_samples, alpha, beta_param)
 
         # check dist change
         dist_change = np.zeros(len(kl_vals), dtype=bool)

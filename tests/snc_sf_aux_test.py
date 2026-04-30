@@ -23,6 +23,9 @@ from snc_sf.utils import (
     calc_subsample_p,
     calculateSF,
     cal_veff,
+    kl_histogram,
+    mean_and_variance_change,
+    kl_divergence,
 )
 from snc_sf.optimize import sigmoid_inv, compute_single_loglike, objective_jax_multi
 from astropy.coordinates import SkyCoord
@@ -510,3 +513,183 @@ class TestGradientComputable:
         grads   = grad_fn(theta, S_data, tuple(A_jks), idx_mod)
         assert grads.shape == theta.shape
         assert jnp.all(jnp.isfinite(grads))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 11. Test KL-Divergence test works properly
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestKLHistogram:
+    """Tests for KL divergence via histogram approximation."""
+
+    def test_returns_finite_value(self):
+        samples = np.random.default_rng(0).beta(2, 5, size=1000)
+        kl = kl_histogram(samples, alpha=2, beta_param=5, bins=50)
+        assert np.isfinite(kl)
+
+    def test_low_kl_for_matching_distribution(self):
+        """KL should be small when samples match the target beta distribution."""
+        rng = np.random.default_rng(0)
+        samples = rng.beta(2, 5, size=5000)
+        kl = kl_histogram(samples, alpha=2, beta_param=5, bins=50)
+        assert kl < 0.5   # loose threshold, avoids flakiness
+
+    def test_higher_kl_for_mismatched_distribution(self):
+        """KL should increase when distribution differs."""
+        rng = np.random.default_rng(0)
+        samples = rng.beta(5, 1, size=5000)  # very different
+        kl = kl_histogram(samples, alpha=2, beta_param=5, bins=50)
+        assert kl > 0.5
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 12. Test Mean/Variance change works
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestMeanAndVarianceChange:
+    """Tests for mean_and_varriance_change (note: returns stats, not differences)."""
+
+    def test_returns_correct_shapes_1d(self):
+        samples = np.random.default_rng(0).beta(2, 5, size=1000)
+
+        sample_mean, sample_var, prior_mean, prior_var = \
+            mean_and_varriance_change(samples, 2, 5)
+
+        assert np.isscalar(sample_mean)
+        assert np.isscalar(sample_var)
+        assert np.isscalar(prior_mean)
+        assert np.isscalar(prior_var)
+
+    def test_returns_correct_shapes_2d(self):
+        samples = np.random.default_rng(0).beta(2, 5, size=(1000, 3))
+
+        sample_mean, sample_var, prior_mean, prior_var = \
+            mean_and_varriance_change(samples, 2, 5)
+
+        assert sample_mean.shape == (3,)
+        assert sample_var.shape == (3,)
+        assert np.isscalar(prior_mean)
+        assert np.isscalar(prior_var)
+
+    def test_prior_mean_and_variance_correct(self):
+        alpha, beta_param = 2, 5
+
+        _, _, prior_mean, prior_var = \
+            mean_and_varriance_change(np.ones(10), alpha, beta_param)
+
+        expected_mean = alpha / (alpha + beta_param)
+        expected_var  = (alpha * beta_param) / (
+            (alpha + beta_param) ** 2 * (alpha + beta_param + 1)
+        )
+
+        assert prior_mean == pytest.approx(expected_mean)
+        assert prior_var  == pytest.approx(expected_var)
+
+    def test_sample_matches_prior_distribution(self):
+        """Samples drawn from prior should have similar mean/variance."""
+        rng = np.random.default_rng(0)
+        samples = rng.beta(2, 5, size=5000)
+
+        sample_mean, sample_var, prior_mean, prior_var = \
+            mean_and_varriance_change(samples, 2, 5)
+
+        assert sample_mean == pytest.approx(prior_mean, rel=0.1)
+        assert sample_var  == pytest.approx(prior_var, rel=0.2)
+
+    def test_shifted_distribution_changes_mean(self):
+        """Different distribution should shift sample mean away from prior."""
+        rng = np.random.default_rng(0)
+        samples = rng.beta(8, 1, size=5000)
+
+        sample_mean, _, prior_mean, _ = \
+            mean_and_varriance_change(samples, 2, 5)
+
+        assert abs(sample_mean - prior_mean) > 0.2
+
+    def test_variance_changes_detected(self):
+        rng = np.random.default_rng(0)
+        samples = rng.beta(8, 1, size=5000)
+
+        _, sample_var, _, prior_var = \
+            mean_and_varriance_change(samples, 2, 5)
+
+        assert abs(sample_var - prior_var) > 0.01
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 13. Full KL-Divergence criteria test
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestKLDivergence:
+    """Tests for KL divergence vs Beta prior with bootstrap baseline."""
+
+    def test_1d_input_shape(self):
+        samples = np.random.default_rng(0).beta(2, 5, size=1000)
+
+        kl_vals, kl_mean, kl_std = kl_divergence(samples, alpha=2, beta_param=5)
+
+        assert isinstance(kl_vals, np.ndarray)
+        assert kl_vals.shape == (1,)
+        assert np.isfinite(kl_mean)
+        assert np.isfinite(kl_std)
+
+    def test_2d_input_shape(self):
+        samples = np.random.default_rng(0).beta(2, 5, size=(1000, 4))
+
+        kl_vals, kl_mean, kl_std = kl_divergence(samples, alpha=2, beta_param=5)
+
+        assert kl_vals.shape == (4,)
+        assert np.isfinite(kl_mean)
+        assert np.isfinite(kl_std)
+
+    def test_reproducibility_with_seed(self):
+        samples = np.random.default_rng(0).beta(2, 5, size=1000)
+
+        out1 = kl_divergence(samples, 2, 5, random_state=123)
+        out2 = kl_divergence(samples, 2, 5, random_state=123)
+
+        np.testing.assert_allclose(out1[0], out2[0])
+        assert out1[1] == pytest.approx(out2[1])
+        assert out1[2] == pytest.approx(out2[2])
+
+    def test_same_distribution_not_flagged(self):
+        """Samples from the same Beta prior should NOT trigger detection."""
+        rng = np.random.default_rng(0)
+        samples = rng.beta(2, 5, size=3000)
+
+        kl_vals, kl_mean, kl_std = kl_divergence(
+            samples, alpha=2, beta_param=5, Nboot=500
+        )
+
+        decision = (kl_vals - kl_mean > 5 * kl_std)
+        assert not decision[0]
+
+    def test_different_distribution_flagged(self):
+        """Strongly different distribution should trigger detection."""
+        rng = np.random.default_rng(0)
+        samples = rng.beta(8, 1, size=3000)  # very different from Beta(2,5)
+
+        kl_vals, kl_mean, kl_std = kl_divergence(
+            samples, alpha=2, beta_param=5, Nboot=500
+        )
+
+        decision = (kl_vals - kl_mean > 5 * kl_std)
+        assert decision[0]
+
+    def test_mixed_2d_detection(self):
+        """Only some parameters differ → detection mask reflects that."""
+        rng = np.random.default_rng(0)
+
+        good = rng.beta(2, 5, size=3000)
+        bad  = rng.beta(8, 1, size=3000)
+
+        samples = np.column_stack([good, bad])
+
+        kl_vals, kl_mean, kl_std = kl_divergence(
+            samples, alpha=2, beta_param=5, Nboot=500
+        )
+
+        decision = (kl_vals - kl_mean > 5 * kl_std)
+
+        assert decision.shape == (2,)
+        assert decision[0] == False
+        assert decision[1] == True

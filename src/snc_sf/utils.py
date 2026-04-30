@@ -450,7 +450,7 @@ def kl_divergence(samples: np.ndarray | ArrayImpl,
     return kl_vals, kl_mean, kl_std
 
 
-def mean_and_varriance_change(samples: np.ndarray | ArrayImpl,
+def mean_and_variance_change(samples: np.ndarray | ArrayImpl,
                               alpha: int, beta_param:int) -> Tuple[np.ndarray, np.ndarray, float, float]:
     """
     Calculate the mean and variance of
