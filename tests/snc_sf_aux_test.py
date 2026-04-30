@@ -547,13 +547,13 @@ class TestKLHistogram:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestMeanAndVarianceChange:
-    """Tests for mean_and_varriance_change (note: returns stats, not differences)."""
+    """Tests for mean_and_variance_change (note: returns stats, not differences)."""
 
     def test_returns_correct_shapes_1d(self):
         samples = np.random.default_rng(0).beta(2, 5, size=1000)
 
         sample_mean, sample_var, prior_mean, prior_var = \
-            mean_and_varriance_change(samples, 2, 5)
+            mean_and_variance_change(samples, 2, 5)
 
         assert np.isscalar(sample_mean)
         assert np.isscalar(sample_var)
@@ -564,7 +564,7 @@ class TestMeanAndVarianceChange:
         samples = np.random.default_rng(0).beta(2, 5, size=(1000, 3))
 
         sample_mean, sample_var, prior_mean, prior_var = \
-            mean_and_varriance_change(samples, 2, 5)
+            mean_and_variance_change(samples, 2, 5)
 
         assert sample_mean.shape == (3,)
         assert sample_var.shape == (3,)
@@ -575,7 +575,7 @@ class TestMeanAndVarianceChange:
         alpha, beta_param = 2, 5
 
         _, _, prior_mean, prior_var = \
-            mean_and_varriance_change(np.ones(10), alpha, beta_param)
+            mean_and_variance_change(np.ones(10), alpha, beta_param)
 
         expected_mean = alpha / (alpha + beta_param)
         expected_var  = (alpha * beta_param) / (
@@ -591,7 +591,7 @@ class TestMeanAndVarianceChange:
         samples = rng.beta(2, 5, size=5000)
 
         sample_mean, sample_var, prior_mean, prior_var = \
-            mean_and_varriance_change(samples, 2, 5)
+            mean_and_variance_change(samples, 2, 5)
 
         assert sample_mean == pytest.approx(prior_mean, rel=0.1)
         assert sample_var  == pytest.approx(prior_var, rel=0.2)
@@ -602,7 +602,7 @@ class TestMeanAndVarianceChange:
         samples = rng.beta(8, 1, size=5000)
 
         sample_mean, _, prior_mean, _ = \
-            mean_and_varriance_change(samples, 2, 5)
+            mean_and_variance_change(samples, 2, 5)
 
         assert abs(sample_mean - prior_mean) > 0.2
 
@@ -611,7 +611,7 @@ class TestMeanAndVarianceChange:
         samples = rng.beta(8, 1, size=5000)
 
         _, sample_var, _, prior_var = \
-            mean_and_varriance_change(samples, 2, 5)
+            mean_and_variance_change(samples, 2, 5)
 
         assert abs(sample_var - prior_var) > 0.01
 
