@@ -241,7 +241,7 @@ if __name__ == '__main__':
     dens = ax3.imshow(Nem / (Nem + Nab),
                     origin='lower', aspect='auto',
             extent=(col_bins.min(), col_bins.max(), MG_bins.min(), MG_bins.max()),
-                    cmap='seismic', vmin=0, vmax=1)
+                    cmap='coolwarm', vmin=0, vmax=1)
     plt.colorbar(dens, ax=ax3, label=r'N / N$_{tot}$')
     ax3.set_title('Emission /  (Emission + Comparison Sample)\n')
 
