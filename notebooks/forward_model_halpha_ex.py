@@ -16,7 +16,7 @@ from astropy.table import Table
 
 if __name__ == '__main__':
     # get the full dataset
-    MG_bin_list = [0, 20, 0.5]
+    MG_bin_list = [0, 20, 0.25]
 
     use_g_rp = False
     if use_g_rp:
@@ -27,7 +27,7 @@ if __name__ == '__main__':
     else:
         sf_bins={'healpix': 3,
                 'phot_g_mean_mag': [0, 22, 1],
-                'bp_rp': [-0.4, 5.25, 0.2]}
+                'bp_rp': [-0.4, 5.25, 0.15]}
         hr_col = 'bp_rp'
 
     n_col = len(np.arange(*sf_bins[hr_col])) - 1
