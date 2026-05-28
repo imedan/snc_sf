@@ -46,13 +46,13 @@ class SNCSelectionFunction(object):
     
     sf_bins: dict
         Binning for the selection function. Needs to have the keys:
-        healpix, phot_g_mean_mag, g_rp. Here, healpix is the order to use,
+        healpix, phot_g_mean_mag, g_rp/bp_rp. Here, healpix is the order to use,
         phot_g_mean_mag is a list of [lower bound, upper bound, bin_width], and
-        g_rp is a list of [lower bound, upper bound, bin_width].
+        g_rp/bp_rp is a list of [lower bound, upper bound, bin_width].
 
     MG_bins: list
         MG binning of HR diagram to use for the forward model. Is 
-        list of [lower bound, upper bound, bin_width]. For g_rp bins, will use
+        list of [lower bound, upper bound, bin_width]. For g_rp/bp_rp bins, will use
         the same as sf_bins.
 
     RNG: np.random._generator.Generator
@@ -141,6 +141,13 @@ class SNCSelectionFunction(object):
         
         self.gcns = pl.read_csv(self.sf_file)
 
+        if 'g_rp' in self.sf_bins.keys():
+            self.hr_color = 'g_rp'
+        elif 'bp_rp' in self.sf_bins.keys():
+            self.hr_color = 'bp_rp'
+        else:
+            raise ValueError('Valid color not included in sf_bins!')
+
         # do any prefiltering
         if pre_filt is not None:
             self.gcns = self.gcns.filter(pre_filt)
@@ -158,6 +165,7 @@ class SNCSelectionFunction(object):
                                 nside=2 ** sf_bins['healpix'])
         self.gcns = self.gcns.with_columns(
             healpix_=pl.Series(healpix),
+            bp_rp=pl.col('phot_bp_mean_mag') - pl.col('phot_rp_mean_mag'),
             g_rp=pl.col('phot_g_mean_mag') - pl.col('phot_rp_mean_mag'),
             MG=pl.col('phot_g_mean_mag') + 5 * np.log10(1e-3 * pl.col('parallax')) + 5,
             log_parallax=np.log10(pl.col('parallax')))  # add this for binning
@@ -176,7 +184,7 @@ class SNCSelectionFunction(object):
 
         # grab the needed columns from GCNS
         needed_columns = ['ra', 'ra_error', 'dec', 'dec_error',
-                          'parallax', 'parallax_error', 'g_rp',
+                          'parallax', 'parallax_error', 'bp_rp', 'g_rp',
                           'phot_g_mean_mag', 'phot_g_mean_flux_over_error']
         for nc in needed_columns:
             if nc in self.data.columns:  # delete if exists
@@ -389,10 +397,10 @@ class SNCSelectionFunction(object):
 
         self.idx_sel_gcns, self.valid_sel_gcns, self.max_idx_sel_gcns = calc_1d_index(bin_idx, bin_edges_sel)
 
-        bin_edges_mod = [len(np.arange(*self.sf_bins['g_rp'])) - 1,
+        bin_edges_mod = [len(np.arange(*self.sf_bins[self.hr_color])) - 1,
                          len(np.arange(*self.MG_bins)) - 1]
 
-        bin_idx = [self.gcns['g_rp_'].to_numpy(),
+        bin_idx = [self.gcns[f'{self.hr_color}_'].to_numpy(),
                    self.gcns['MG_'].to_numpy()]
 
         self.idx_mod_gcns, self.valid_mod_gcns, self.max_idx_mod_gcns = calc_1d_index(bin_idx, bin_edges_mod)
@@ -488,19 +496,19 @@ class SNCSelectionFunction(object):
 
         idx_sel_data, valid_sel_data, max_idx_sel_data = calc_1d_index(bin_idx, bin_edges)
 
-        bin_edges = [len(np.arange(*self.sf_bins['g_rp'])) - 1,
+        bin_edges = [len(np.arange(*self.sf_bins[self.hr_color])) - 1,
                     len(np.arange(*self.MG_bins)) - 1]
 
         idx_mod_data = np.zeros((self.nsamps, len(filter_data)), dtype=int)
         valid_mod_data = np.zeros((self.nsamps, len(filter_data)), dtype=bool)
         for i in range(self.nsamps):
             if self.mean:
-                bin_idx = [filter_data['g_rp_'].to_numpy(),
+                bin_idx = [filter_data[f'{self.hr_color}_'].to_numpy(),
                            filter_data['MG_'].to_numpy()]
             else:
                 MGi = filter_data['phot_g_mean_mag'].to_numpy() + 5 * np.log10(1e-3 * 1 / filter_data[f'Dist{i + 1}'].to_numpy()) + 5
                 MGi_ = np.digitize(MGi, np.arange(*self.MG_bins)) - 1
-                bin_idx = [filter_data['g_rp_'].to_numpy(),
+                bin_idx = [filter_data[f'{self.hr_color}_'].to_numpy(),
                            MGi_]
             
             idx_mod_data[i], valid_mod_data[i], max_idx_mod_data = calc_1d_index(bin_idx, bin_edges)
@@ -525,19 +533,19 @@ class SNCSelectionFunction(object):
 
         idx_sel_gcns, valid_sel_gcns, max_idx_sel_gcns = calc_1d_index(bin_idx, bin_edges)
 
-        bin_edges = [len(np.arange(*self.sf_bins['g_rp'])) - 1,
+        bin_edges = [len(np.arange(*self.sf_bins[self.hr_color])) - 1,
                     len(np.arange(*self.MG_bins)) - 1]
 
         idx_mod_gcns = np.zeros((self.nsamps, len(self.gcns)), dtype=int)
         valid_mod_gcns = np.zeros((self.nsamps, len(self.gcns)), dtype=bool)
         for i in range(self.nsamps):
             if self.mean:
-                bin_idx = [self.gcns['g_rp_'].to_numpy(),
+                bin_idx = [self.gcns[f'{self.hr_color}_'].to_numpy(),
                            self.gcns['MG_'].to_numpy()]
             else:
                 MGi = self.gcns['phot_g_mean_mag'].to_numpy() + 5 * np.log10(1e-3 * 1 / self.gcns[f'Dist{i + 1}'].to_numpy()) + 5
                 MGi_ = np.digitize(MGi, np.arange(*self.MG_bins)) - 1
-                bin_idx = [self.gcns['g_rp_'].to_numpy(),
+                bin_idx = [self.gcns[f'{self.hr_color}_'].to_numpy(),
                            MGi_]
             
             idx_mod_gcns[i], valid_mod_gcns[i], max_idx_mod_gcns = calc_1d_index(bin_idx, bin_edges)
@@ -633,10 +641,10 @@ class SNCSelectionFunction(object):
 
         _, valid_sel_data, _ = calc_1d_index(bin_idx, bin_edges)
 
-        bin_edges = [len(np.arange(*self.sf_bins['g_rp'])) - 1,
+        bin_edges = [len(np.arange(*self.sf_bins[self.hr_color])) - 1,
                     len(np.arange(*self.MG_bins)) - 1]
 
-        bin_idx = [filter_data['g_rp_'].to_numpy(),
+        bin_idx = [filter_data[f'{self.hr_color}_'].to_numpy(),
                     filter_data['MG_'].to_numpy()]
             
         _, valid_mod_data, _ = calc_1d_index(bin_idx, bin_edges)
