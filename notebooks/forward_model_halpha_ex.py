@@ -183,10 +183,10 @@ if __name__ == '__main__':
 
     for ax in [ax2]:
         if use_g_rp:
-            ax2.set_xlim(1, 2)
+            ax.set_xlim(1, 2)
             ax.set_xlabel(r'$G-RP$')
         else:
-            ax2.set_xlim(1.5, 5)
+            ax.set_xlim(1.5, 5)
             ax.set_xlabel(r'$BP-RP$')
         ax.set_ylabel(r'$M_G$')
 
@@ -208,10 +208,10 @@ if __name__ == '__main__':
 
     for ax in [ax2]:
         if use_g_rp:
-            ax2.set_xlim(1, 2)
+            ax.set_xlim(1, 2)
             ax.set_xlabel(r'$G-RP$')
         else:
-            ax2.set_xlim(1.5, 5)
+            ax.set_xlim(1.5, 5)
             ax.set_xlabel(r'$BP-RP$')
         ax.set_ylabel(r'$M_G$')
 
@@ -250,7 +250,7 @@ if __name__ == '__main__':
             ax.set_xlabel(r'$G-RP$')
             ax.set_xlim(1, 2)
         else:
-            ax2.set_xlim(1.5, 5)
+            ax.set_xlim(1.5, 5)
             ax.set_xlabel(r'$BP-RP$')
         ax.set_ylabel(r'$M_G$')
         ax.set_ylim(8, 17.5)
