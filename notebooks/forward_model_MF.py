@@ -257,11 +257,19 @@ if __name__ == '__main__':
     # =============================
     MG_bin_list = [0, 20, 0.25]
 
-    sf_bins={'healpix': 3,
-            'phot_g_mean_mag': [0, 22, 1],
-            'g_rp': [-0.4, 2.2, 0.05]}
+    use_g_rp = False
+    if use_g_rp:
+        sf_bins={'healpix': 3,
+                'phot_g_mean_mag': [0, 22, 1],
+                'g_rp': [-0.4, 2.2, 0.05]}
+        hr_col = 'g_rp'
+    else:
+        sf_bins={'healpix': 3,
+                'phot_g_mean_mag': [0, 22, 1],
+                'bp_rp': [-0.4, 5.25, 0.15]}
+        hr_col = 'bp_rp'
 
-    n_g_rp = len(np.arange(*sf_bins['g_rp'])) - 1
+    n_col = len(np.arange(*sf_bins[hr_col])) - 1
     n_mg = len(np.arange(*MG_bin_list)) - 1
 
     # get Zach's overluminouse stars from: https://zenodo.org/records/18500082?preview=1&token=eyJhbGciOiJIUzUxMiIsImlhdCI6MTc3MDMyOTI0MywiZXhwIjoxODMwMjk3NTk5fQ.eyJpZCI6ImRjMzRkMTNlLTIxNzAtNGE5Ni05OGMyLTI3MDY5NGU1MjljZiIsImRhdGEiOnt9LCJyYW5kb20iOiI5NzY5ZmY5NjA4NDhlZDBlMDFkNGIxNjFiN2E1NWU0YSJ9.nQqeKD-sk-RbMyhJLbbGbHk-NzpKaJtkzDApknGXn5lOv2xWx-GV-xcTiZpxwGiIpkV7nXsg5Cb23OThf16q0A
@@ -324,7 +332,7 @@ if __name__ == '__main__':
     # get A_jks
     sf.evalutate_Ajk(weight_volume=False)
     # bins for plotting
-    g_rp_bins = np.arange(*sf.sf_bins['g_rp'])
+    col_bins = np.arange(*sf.sf_bins[hr_col])
     MG_bins = np.arange(*MG_bin_list)
 
     # run the forward model
@@ -372,8 +380,8 @@ if __name__ == '__main__':
     # FIT MASS FUNCTION OF EACH SAMPLE WITH BROKEN POWER LAW
     # ======================================================
     gcns_filter = sf.gcns.filter(pl.Series(sf.gcns_valid))
-    Ntot, _, _ = np.histogram2d(gcns_filter['g_rp'].to_numpy(), gcns_filter['MG'].to_numpy(),
-                                bins=[g_rp_bins, MG_bins])
+    Ntot, _, _ = np.histogram2d(gcns_filter[hr_col].to_numpy(), gcns_filter['MG'].to_numpy(),
+                                bins=[col_bins, MG_bins])
 
     MG = sf.gcns['MG'].to_numpy()
     g_rp = sf.gcns['g_rp'].to_numpy()
@@ -394,7 +402,7 @@ if __name__ == '__main__':
 
     for i in trange(len(feh_data)):
         # get the number in HR diagram space based on draws
-        Nboot = RNG.binomial(Ntot.astype(int), p_samples_feh[i].reshape((-1, n_g_rp, n_mg)))
+        Nboot = RNG.binomial(Ntot.astype(int), p_samples_feh[i].reshape((-1, n_col, n_mg)))
 
         Nmass_boot = np.zeros((Nboot.shape[0], sf.data['Veff_samps'].to_numpy().shape[1], len(mass_bins) - 1))
         
