@@ -607,7 +607,7 @@ if __name__ == '__main__':
     bic_broken_all = []
     bic_single_all = []
 
-    mass_bins = np.linspace(0.2, 0.7, 9)
+    mass_bins = np.linspace(0.2, 0.7, 17)
 
     # bounds for power-law fits
     bounds_broken = [(-20, 20), (-10, 10.0), (-10, 10),
