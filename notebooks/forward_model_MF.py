@@ -251,6 +251,212 @@ def fit_broken_powerlaw_batch(
     return np.array(params_jax)
 
 
+@jax.jit
+def model_bin_density_single_jax(edges: jnp.ndarray, params: jnp.ndarray) -> jnp.ndarray:
+    """
+    Model the bin density of a MF that follows a single power law.
+
+    Parameters
+    -----------
+    edges: jnp.ndarray
+        bin edges of the histogram. Must be linear!
+
+    params: jnp.ndarray
+        [logC, alpha]
+
+    Returns
+    --------
+    y_model: jnp.ndarray
+        average differential density per bin
+    """
+    logC, alpha = params[0], params[1]
+    C = 10.0 ** logC
+
+    lo = edges[:-1]
+    hi = edges[1:]
+    width = hi - lo
+
+    integral = _integral_power_law_jax(lo, hi, C, alpha)
+    return integral / width
+
+
+@jax.jit
+def obj_logsq_single_jax(params: jnp.ndarray, edges: jnp.ndarray, y: jnp.ndarray) -> jnp.ndarray:
+    """
+    Log-squared objective for the single power law (2 params).
+    """
+    ymod = model_bin_density_single_jax(edges, params)
+    valid = (y > 0) & (ymod > 0)
+    log_resid_sq = jnp.where(valid, (jnp.log(y) - jnp.log(ymod)) ** 2, 0.0)
+    loss = jnp.sum(log_resid_sq)
+    return jnp.where(jnp.any(valid), loss, 1e9)
+
+
+def fit_single_powerlaw_batch(
+    Nmass_boot: np.ndarray,
+    mass_bins: np.ndarray,
+    p0: np.ndarray,
+    bounds: list,
+) -> np.ndarray:
+    """
+    Fit a single power law to every row of Nmass_boot in parallel using
+    jaxopt.LBFGSB + jax.vmap.
+
+    Parameters
+    ----------
+    Nmass_boot: np.ndarray  (size, n_bins)
+    mass_bins: np.ndarray   bin edges
+    p0: np.ndarray          initial guess, length 2  [logC, alpha]
+    bounds: list            list of (lo, hi) tuples, length 2
+
+    Returns
+    -------
+    params_boot: np.ndarray  (size, 2)
+    """
+    edges = jnp.array(mass_bins, dtype=jnp.float64)
+    Y     = jnp.array(Nmass_boot, dtype=jnp.float64)
+    size  = Y.shape[0]
+
+    P0 = jnp.broadcast_to(jnp.array(p0, dtype=jnp.float64), (size, 2))
+
+    lower = jnp.array([b[0] for b in bounds], dtype=jnp.float64)
+    upper = jnp.array([b[1] for b in bounds], dtype=jnp.float64)
+
+    solver = jaxopt.LBFGSB(fun=obj_logsq_single_jax, maxiter=500, tol=1e-6)
+
+    def run_one(p0_row, y_row):
+        result = solver.run(p0_row, bounds=(lower, upper), edges=edges, y=y_row)
+        return result.params
+
+    params_jax = jax.vmap(run_one)(P0, Y)
+    return np.array(params_jax)
+
+
+def loglike_logspace(
+    y: np.ndarray,
+    y_var: np.ndarray,
+    y_model: np.ndarray,
+) -> tuple[float, int]:
+    """
+    Gaussian log-likelihood in log-space.
+
+    Parameters
+    ----------
+    y : ndarray
+        Mean/median mass function.
+
+    y_var : ndarray
+        Variance of the bootstrap mass functions.
+
+    y_model : ndarray
+        Model prediction evaluated in the same bins.
+
+    Returns
+    -------
+    logL : float
+        Log likelihood.
+
+    n : int
+        Number of bins used.
+    """
+
+    valid = (
+        np.isfinite(y)
+        & np.isfinite(y_var)
+        & np.isfinite(y_model)
+        & (y > 0)
+        & (y_var > 0)
+        & (y_model > 0)
+    )
+
+    y = y[valid]
+    y_var = y_var[valid]
+    y_model = y_model[valid]
+
+    # error propagation:
+    # sigma(log y) = sigma(y)/y
+    sigma_log = np.sqrt(y_var) / y
+
+    resid = np.log(y) - np.log(y_model)
+
+    logL = -0.5 * np.sum(
+        resid**2 / sigma_log**2
+        + np.log(2 * np.pi * sigma_log**2)
+    )
+
+    return float(logL), len(y)
+
+
+def bic_mass_function(
+    params: np.ndarray,
+    mass_bins: np.ndarray,
+    y: np.ndarray,
+    y_var: np.ndarray,
+    model: str = "broken",
+) -> tuple[float, float]:
+    """
+    Compute log-likelihood and BIC for a mass-function fit.
+
+    Parameters
+    ----------
+    params : ndarray
+        Best-fit parameters.
+
+        broken:
+            [logC, alpha1, alpha2, log_mb]
+
+        single:
+            [logC, alpha]
+
+    mass_bins : ndarray
+        Histogram edges.
+
+    y : ndarray
+        Mean/median mass function.
+
+    y_var : ndarray
+        Variance from bootstrap realizations.
+
+    model : str
+        'single' or 'broken'
+
+    Returns
+    -------
+    logL : float
+
+    bic : float
+    """
+
+    edges = jnp.asarray(mass_bins)
+
+    if model == "broken":
+        y_model = np.asarray(
+            model_bin_density_jax(
+                edges,
+                jnp.asarray(params)
+            )
+        )
+        k = 4
+
+    elif model == "single":
+        y_model = np.asarray(
+            model_bin_density_single_jax(
+                edges,
+                jnp.asarray(params)
+            )
+        )
+        k = 2
+
+    else:
+        raise ValueError("model must be 'single' or 'broken'")
+
+    logL, n = loglike_logspace(y, y_var, y_model)
+
+    bic = k * np.log(n) - 2 * logL
+
+    return logL, bic
+
+
 if __name__ == '__main__':
     # =============================
     # SET UP DATA FOR FORWARD MODEL
@@ -396,9 +602,23 @@ if __name__ == '__main__':
         evs.append(sf.idx_mod_gcns[ev_filter] == k)
 
     Nmasses = []
-    params = []
+    params_broken_all = []
+    params_single_all = []
+    bic_broken_all = []
+    bic_single_all = []
 
     mass_bins = np.linspace(0.2, 0.7, 9)
+
+    # bounds for power-law fits
+    bounds_broken = [(-20, 20), (-10, 10.0), (-10, 10),
+                     (np.log10(0.3), np.log10(0.5))]
+    bounds_single = [(-20, 20), (-10, 10.0)]
+
+     # warm up JIT compilation once, outside the loop
+    _dummy_y4 = np.ones((4, len(mass_bins) - 1))
+    _dummy_y2 = np.ones((4, len(mass_bins) - 1))
+    fit_broken_powerlaw_batch(_dummy_y4, mass_bins, np.array([0.0, 1.0, 2.5, np.log10(0.5)]), bounds_broken)
+    fit_single_powerlaw_batch(_dummy_y2, mass_bins, np.array([0.0, 1.3]), bounds_single)
 
     for i in trange(len(feh_data)):
         # get the number in HR diagram space based on draws
@@ -449,35 +669,62 @@ if __name__ == '__main__':
                                    nan=0.0, posinf=0.0, neginf=0.0)
         Nmasses.append(Nmass_boot)
 
-        # fit broken power law
-        size = len(Nmass_boot)
-        params_boot = np.zeros((size, 4))
-
         # do fit with median to get good initial guess
         x = mass_bins
         y = np.nanpercentile(Nmass_boot, 50, axis=0)
-        widths = x[1:] - x[:-1]
+
+        # inital guess broken
         y_valid = y[np.isfinite(y) & (y > 0)]
         approx_C = np.max(y_valid) * np.mean(np.diff(x)) if len(y_valid) > 0 else 1e-3
-        p0 = [np.log10(max(approx_C, 1e-6)), 1.0, 2.5, np.log10(0.5)]
-        bounds = [(-20, 20), (-10, 10.0), (-10, 10),
-                  (np.log10(0.3), np.log10(0.5))]
-        
-        res = minimize(
+        p0_broken = [np.log10(max(approx_C, 1e-6)), 1.0, 2.5, np.log10(0.4)]
+        res_broken = minimize(
             lambda p, edges, y: float(obj_logsq_jax(jnp.array(p), jnp.array(edges), jnp.array(y))),
-            p0, args=(x, y), method='L-BFGS-B', bounds=bounds,
+            p0_broken, args=(x, y), method='L-BFGS-B', bounds=bounds_broken,
         )
-        p0 = res.x
+        p0_broken = res_broken.x
 
-        # do dummy run to force compile
-        _dummy_y = np.ones((4, len(mass_bins) - 1))
-        _dummy_p0 = np.array([0.0, 1.0, 2.5, np.log10(0.5)])
-        fit_broken_powerlaw_batch(_dummy_y, mass_bins, _dummy_p0, bounds)
+        # initial guess single
+        p0_single = [p0_broken[0], (p0_broken[1] + p0_broken[2]) / 2]
+        res_single = minimize(
+            lambda p, edges, y: float(obj_logsq_single_jax(jnp.array(p), jnp.array(edges), jnp.array(y))),
+            p0_single, args=(x, y), method='L-BFGS-B', bounds=bounds_single,
+        )
+        p0_single = res_single.x
 
-        params_boot = fit_broken_powerlaw_batch(Nmass_boot, mass_bins, p0, bounds)
-        params.append(params_boot)
+        # run full batch
+        params_broken = fit_broken_powerlaw_batch(Nmass_boot, mass_bins, p0_broken, bounds_broken)
+        params_single = fit_single_powerlaw_batch(Nmass_boot, mass_bins, p0_single, bounds_single)
 
-        # plot the results
+        params_broken_all.append(params_broken)
+        params_single_all.append(params_single)
+
+        # calculate BIC
+        y_med = np.nanmedian(Nmass_boot, axis=0)
+        y_lo = np.nanpercentile(Nmass_boot, 16, axis=0)
+        y_hi = np.nanpercentile(Nmass_boot, 84, axis=0)
+        sigma = 0.5 * (y_hi - y_lo)
+        sigma = np.maximum(sigma, 1e-12)
+        y_var = sigma ** 2
+
+        logL_broken, bic_broken = bic_mass_function(
+            res_broken.x,
+            mass_bins,
+            y_med,
+            y_var,
+            model="broken",
+        )
+        bic_broken_all.append(bic_broken)
+
+        logL_single, bic_single = bic_mass_function(
+            res_single.x,
+            mass_bins,
+            y_med,
+            y_var,
+            model="single",
+        )
+        bic_single_all.append(bic_single)
+
+        # plot the results (broken)
         plt.figure(figsize=(15, 7))
         plt.hist(mass_bins[:-1], bins=mass_bins, weights=np.nanpercentile(Nmass_boot, 50, axis=0),
                 histtype='step', edgecolor='k', lw=2, label=f'{fe_h_bins[i]:.3f} < [Fe/H] < {fe_h_bins[i + 1]:.3f}')
@@ -488,7 +735,7 @@ if __name__ == '__main__':
 
         
         x_cont = np.linspace(x[0], x[-1], 100)
-        xi_boot = np.array([xi_from_params(params_boot[j], x_cont) for j in range(len(params_boot))])
+        xi_boot = np.array([xi_from_params(params_broken[j], x_cont) for j in range(len(params_broken))])
         plt.plot(x_cont,
                  np.nanpercentile(xi_boot, 50, axis=0),
                                 '--', c='r', lw=2)
@@ -507,6 +754,36 @@ if __name__ == '__main__':
                     bbox_inches='tight')
         plt.close()
 
+        # plot the results (single)
+        plt.figure(figsize=(15, 7))
+        plt.hist(mass_bins[:-1], bins=mass_bins, weights=np.nanpercentile(Nmass_boot, 50, axis=0),
+                histtype='step', edgecolor='k', lw=2, label=f'{fe_h_bins[i]:.3f} < [Fe/H] < {fe_h_bins[i + 1]:.3f}')
+        plt.bar(x=mass_bins[:-1], height=np.nanpercentile(Nmass_boot, 97.5, axis=0) -
+                                    np.nanpercentile(Nmass_boot, 2.5, axis=0),
+                bottom=np.nanpercentile(Nmass_boot, 2.5, axis=0), width=np.diff(mass_bins),
+                align='edge', linewidth=0, color='k', alpha=0.25)
+
+        
+        x_cont = np.linspace(x[0], x[-1], 100)
+        xi_boot = np.array([xi_from_params(params_single[j], x_cont) for j in range(len(params_single))])
+        plt.plot(x_cont,
+                 np.nanpercentile(xi_boot, 50, axis=0),
+                                '--', c='r', lw=2)
+        lower = np.nanpercentile(xi_boot, 2.5, axis=0)
+        upper = np.nanpercentile(xi_boot, 97.5, axis=0)
+        plt.fill_between(x_cont, lower, upper, color='r', alpha=0.3)
+        
+        plt.legend(prop={'size': 16})
+        plt.grid()
+        plt.yscale('log')
+        plt.xscale('log')
+        plt.xlabel(r'Mass (M$_\odot$)')
+        plt.ylabel(r'Mass Function (#/pc$^3$/M$_\odot$)')
+        plt.xlim(mass_bins.min(), mass_bins.max())
+        plt.savefig(f'paper_plots/mass_function/mf_feh_bin_{i + 1}_single.png',
+                    bbox_inches='tight')
+        plt.close()
+
     # =====================
     # PLOT AND SAVE RESULTS
     # =====================
@@ -517,16 +794,43 @@ if __name__ == '__main__':
         for i in range(len(feh_data)):
             midp = (fe_h_bins[i] + fe_h_bins[i + 1]) / 2
             if savename[pi - 1] != 'mb':
-                plt.scatter(midp, np.nanpercentile(params[i], 50, axis=0)[pi], c='k')
-                plt.errorbar([midp], [np.nanpercentile(params[i], 50, axis=0)[pi]],
-                            yerr=np.diff(np.nanpercentile(params[i], [16, 50, 84], axis=0)[:, pi]).reshape((2, -1)),
+                plt.scatter(midp, np.nanpercentile(params_broken_all[i], 50, axis=0)[pi], c='k')
+                plt.errorbar([midp], [np.nanpercentile(params_broken_all[i], 50, axis=0)[pi]],
+                            yerr=np.diff(np.nanpercentile(params_broken_all[i], [16, 50, 84], axis=0)[:, pi]).reshape((2, -1)),
                             color='k',
                             fmt='None',
                             xerr=[(fe_h_bins[i + 1] - fe_h_bins[i]) / 2])
             else:
-                plt.scatter(midp, 10 ** np.nanpercentile(params[i], 50, axis=0)[pi], c='k')
-                plt.errorbar([midp], [10 ** np.nanpercentile(params[i], 50, axis=0)[pi]],
-                            yerr=np.diff(10 ** np.nanpercentile(params[i], [16, 50, 84], axis=0)[:, pi]).reshape((2, -1)),
+                plt.scatter(midp, 10 ** np.nanpercentile(params_broken_all[i], 50, axis=0)[pi], c='k')
+                plt.errorbar([midp], [10 ** np.nanpercentile(params_broken_all[i], 50, axis=0)[pi]],
+                            yerr=np.diff(10 ** np.nanpercentile(params_broken_all[i], [16, 50, 84], axis=0)[:, pi]).reshape((2, -1)),
+                            color='k',
+                            fmt='None',
+                            xerr=[(fe_h_bins[i + 1] - fe_h_bins[i]) / 2])
+        plt.grid()
+        plt.ylabel(label[pi - 1])
+        plt.xlabel('[Fe/H]')
+        plt.savefig(f'paper_plots/mass_function/{savename[pi - 1]}_vs_feh.png',
+                    bbox_inches='tight')
+        plt.close()
+
+    label = [r'$\alpha$']
+    savename = ['alpha']
+    for pi in range(1, 2):
+        plt.figure(figsize=(15, 7))
+        for i in range(len(feh_data)):
+            midp = (fe_h_bins[i] + fe_h_bins[i + 1]) / 2
+            if savename[pi - 1] != 'mb':
+                plt.scatter(midp, np.nanpercentile(params_single_all[i], 50, axis=0)[pi], c='k')
+                plt.errorbar([midp], [np.nanpercentile(params_single_all[i], 50, axis=0)[pi]],
+                            yerr=np.diff(np.nanpercentile(params_single_all[i], [16, 50, 84], axis=0)[:, pi]).reshape((2, -1)),
+                            color='k',
+                            fmt='None',
+                            xerr=[(fe_h_bins[i + 1] - fe_h_bins[i]) / 2])
+            else:
+                plt.scatter(midp, 10 ** np.nanpercentile(params_single_all[i], 50, axis=0)[pi], c='k')
+                plt.errorbar([midp], [10 ** np.nanpercentile(params_single_all[i], 50, axis=0)[pi]],
+                            yerr=np.diff(10 ** np.nanpercentile(params_single_all[i], [16, 50, 84], axis=0)[:, pi]).reshape((2, -1)),
                             color='k',
                             fmt='None',
                             xerr=[(fe_h_bins[i + 1] - fe_h_bins[i]) / 2])
@@ -539,10 +843,18 @@ if __name__ == '__main__':
 
     # save the results if need to look at later
     save_dict = {}
-    for i, (ps, nm, pr) in enumerate(zip(p_samples_feh, Nmasses, params)):
+    for i, (ps, nm, pr, prs, bb, bs) in enumerate(zip(p_samples_feh,
+                                                      Nmasses,
+                                                      params_broken_all,
+                                                      params_single_all,
+                                                      bic_broken_all,
+                                                      bic_single_all)):
         save_dict[f'p_samples_feh_{i}'] = ps
         save_dict[f'Nmasses_{i}'] = nm
-        save_dict[f'params_{i}'] = pr
+        save_dict[f'params_broken_{i}'] = pr
+        save_dict[f'params_single_{i}'] = prs
+        save_dict[f'bic_broken_{i}'] = bb
+        save_dict[f'bic_single_{i}'] = bs
     save_dict['fe_h_bins'] = fe_h_bins
 
     np.savez_compressed('mf_results.npz', **save_dict)
