@@ -17,7 +17,17 @@ if __name__ == '__main__':
 
     p_samples_feh = [data[f'p_samples_feh_{i}'] for i in range(n_bins)]
     Nmasses       = [data[f'Nmasses_{i}']       for i in range(n_bins)]
-    params        = [data[f'params_{i}']        for i in range(n_bins)]
+    params        = [data[f'params_broken_{i}'] for i in range(n_bins)]
+    params_single = [data[f'params_single_{i}'] for i in range(n_bins)]
+    bic_broken    = [data[f'bic_broken_{i}']    for i in range(n_bins)]
+    bic_single    = [data[f'bic_single_{i}']    for i in range(n_bins)]
+    best_fit      = []
+
+    for i in range(n_bins):
+        if bic_single[i] - bic_broken[i] > 0:
+            best_fit.append('broken')
+        else:
+            best_fit.append('single')
 
     mass_bins = np.linspace(0.2, 0.7, Nmasses[0].shape[-1] + 1)
 
@@ -46,7 +56,10 @@ if __name__ == '__main__':
         
         
         # plot the fit
-        params_boot = params[i]
+        if best_fit[i] == 'broken':
+            params_boot = params[i]
+        else:
+            params_boot = params_single[i]
         x_cont = np.linspace(mass_bins[0], mass_bins[-1], 100)
         xi_boot = np.array([xi_from_params(params_boot[j], x_cont) for j in range(len(params_boot))])
         plt.plot(x_cont,
@@ -82,21 +95,31 @@ if __name__ == '__main__':
         for i in range(len(params)):
             midp = (fe_h_bins[i] + fe_h_bins[i + 1]) / 2
             if savename[pi - 1] != 'mb':
-                plt.scatter(midp, np.nanpercentile(params[i], 50, axis=0)[pi],
-                            c=colors_rgba[i])
-                plt.errorbar([midp], [np.nanpercentile(params[i], 50, axis=0)[pi]],
-                            yerr=np.diff(np.nanpercentile(params[i], [16, 50, 84], axis=0)[:, pi]).reshape((2, -1)),
-                            color=colors_rgba[i],
-                            fmt='None',
-                            xerr=[(fe_h_bins[i + 1] - fe_h_bins[i]) / 2])
+                if best_fit[i] == 'broken':
+                    plt.scatter(midp, np.nanpercentile(params[i], 50, axis=0)[pi],
+                                c=colors_rgba[i])
+                    plt.errorbar([midp], [np.nanpercentile(params[i], 50, axis=0)[pi]],
+                                yerr=np.diff(np.nanpercentile(params[i], [16, 50, 84], axis=0)[:, pi]).reshape((2, -1)),
+                                color=colors_rgba[i],
+                                fmt='None',
+                                xerr=[(fe_h_bins[i + 1] - fe_h_bins[i]) / 2])
+                else:
+                    plt.scatter(midp, np.nanpercentile(params_single[i], 50, axis=0)[1],
+                                c=colors_rgba[i], marker='^', s=50)
+                    plt.errorbar([midp], [np.nanpercentile(params_single[i], 50, axis=0)[1]],
+                                yerr=np.diff(np.nanpercentile(params_single[i], [16, 50, 84], axis=0)[:, 1]).reshape((2, -1)),
+                                color=colors_rgba[i],
+                                fmt='None',
+                                xerr=[(fe_h_bins[i + 1] - fe_h_bins[i]) / 2])
             else:
-                plt.scatter(midp, 10 ** np.nanpercentile(params[i], 50, axis=0)[pi],
-                            c=colors_rgba[i])
-                plt.errorbar([midp], [10 ** np.nanpercentile(params[i], 50, axis=0)[pi]],
-                            yerr=np.diff(10 ** np.nanpercentile(params[i], [16, 50, 84], axis=0)[:, pi]).reshape((2, -1)),
-                            color=colors_rgba[i],
-                            fmt='None',
-                            xerr=[(fe_h_bins[i + 1] - fe_h_bins[i]) / 2])
+                if best_fit[i] == 'broken':
+                    plt.scatter(midp, 10 ** np.nanpercentile(params[i], 50, axis=0)[pi],
+                                c=colors_rgba[i])
+                    plt.errorbar([midp], [10 ** np.nanpercentile(params[i], 50, axis=0)[pi]],
+                                yerr=np.diff(10 ** np.nanpercentile(params[i], [16, 50, 84], axis=0)[:, pi]).reshape((2, -1)),
+                                color=colors_rgba[i],
+                                fmt='None',
+                                xerr=[(fe_h_bins[i + 1] - fe_h_bins[i]) / 2])
         plt.grid()
         plt.ylabel(label[pi - 1])
         plt.xlabel('[Fe/H]')
