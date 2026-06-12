@@ -185,7 +185,7 @@ class SNCSelectionFunction(object):
         self.data = self.data.filter(np.isin(self.data['source_id'], self.gcns['source_id']))
         Nfilt = len(self.data)
         if Nfilt < N0:
-            warn_str = str(N0 - Nfilt) + "stars not in GCSN removed from SDSS sample."
+            warn_str = str(N0 - Nfilt) + " stars not in GCNS removed from SDSS sample."
             warnings.warn(warn_str)
 
         # grab the needed columns from GCNS
