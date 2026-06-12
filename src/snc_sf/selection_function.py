@@ -180,7 +180,13 @@ class SNCSelectionFunction(object):
 
         # load the data
         self.data = pl.read_csv(data_file)
+        N0 = len(self.data)
+        # filter the data
         self.data = self.data.filter(np.isin(self.data['source_id'], self.gcns['source_id']))
+        Nfilt = len(self.data)
+        if Nfilt < N0:
+            warn_str = str(N0 - Nfilt) + "stars not in GCSN removed from SDSS sample."
+            warnings.warn(warn_str)
 
         # grab the needed columns from GCNS
         needed_columns = ['ra', 'ra_error', 'dec', 'dec_error',
