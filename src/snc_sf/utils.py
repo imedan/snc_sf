@@ -225,6 +225,7 @@ def cal_veff(phot_g_mean_mag: np.ndarray | pl.Series,
 
     z0: float
         Height of the Sun above the disk. Default is from
+        Karim & Mamajek (2017) (https://ui.adsabs.harvard.edu/abs/2017MNRAS.465..472K/abstract)
     
     Returns
     -------
