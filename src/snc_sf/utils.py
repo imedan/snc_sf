@@ -190,7 +190,9 @@ def cal_veff(phot_g_mean_mag: np.ndarray | pl.Series,
              order: int,
              G_lim: np.ndarray | pl.Series | float,
              healpix: np.ndarray | pl.Series,
-             full_sky: bool = False) -> np.ndarray | pl.Series:
+             full_sky: bool = False,
+             H: float = 365.,
+             z0: float = 17.) -> np.ndarray | pl.Series:
     """
     Calculate the effective volume of the data
 
@@ -210,12 +212,37 @@ def cal_veff(phot_g_mean_mag: np.ndarray | pl.Series,
     
     G_lim: np.ndarray | pl.Series | float
         The limiting magnitude assumed.
+
+    healpix: np.ndarray | pl.Series
+        healpix values for the sample
+
+    full_sky: bool
+        if average over the whole sky or not
+
+    H: float
+        scale height of the disk. Default is from
+        GCNS (https://ui.adsabs.harvard.edu/abs/2021A%26A...649A...6G/abstract)
+
+    z0: float
+        Height of the Sun above the disk. Default is from
     
     Returns
     -------
     Veff: np.ndarray | pl.Series
         The effective volume of the data in pc^3
     """
+    # check if input is polars or not
+    is_polars = isinstance(parallax, pl.Series)
+
+    # convert to numpy for calculations
+    phot_g_mean_mag = np.asarray(phot_g_mean_mag)
+    parallax = np.asarray(parallax)
+    galb = np.asarray(galb)
+    healpix = np.asarray(healpix)
+
+    if np.ndim(G_lim):
+        G_lim = np.asarray(G_lim)
+
     # get solid angle approximation in bins of magntiude
     if full_sky:
         hpbins = len(np.unique(healpix))
@@ -227,15 +254,52 @@ def cal_veff(phot_g_mean_mag: np.ndarray | pl.Series,
     dmax = 10 ** ((G_lim - MG) / 5 + 1)
     dmax[dmax > 100] = 100
 
-    H = 365  # scale height of thin disc in pc
+    k = np.abs(np.sin(galb))
+    zeta = dmax * k / H
+    r0 = z0 / k
+    eta = r0 * k / H
 
-    zeta = dmax * np.sin(abs(galb)) / H
+    def case1(zeta, k, H):
+        """
+        case for when b > 0
+        """
+        integ =  (H / k) ** 3 * (2 - (zeta ** 2 + 2 * zeta + 2) * np.exp(-zeta))
+        return integ
+    
+    def case2(zeta, k, H):
+        """
+        case for when b < 0 and r0 >= dmax
+        """
+        integ = (H / k) ** 3 * ((zeta ** 2 - 2 * zeta + 2) * np.exp(zeta) - 2)
+        return integ
 
-    Veff = solid_ang * (H / abs(np.sin(galb))) ** 3 * (2 - (zeta ** 2 + 2 * zeta + 2) * np.exp(-zeta))
+    def case3(zeta, eta, k, H):
+        """
+        case for when b < 0 and r0 < dmax
+        """
+        integ1 = case2(eta, k, H)
+        integ2 = (H / k) ** 3 * (np.exp(eta) * (eta ** 2 + 2 * eta + 2) - np.exp(2 * eta - zeta) * (zeta ** 2 + 2 * zeta + 2))
+        return integ1 + integ2
+
+    # do the effective volume for each of the cases
+    Veff = np.zeros(len(dmax))
+    case1_ev = galb > 0
+    Veff[case1_ev] =  solid_ang * case1(zeta[case1_ev], k[case1_ev], H)
+
+    case2_ev = (galb < 0) & (r0 >= dmax)
+    Veff[case2_ev] =  solid_ang * case2(zeta[case2_ev], k[case2_ev], H)
+
+    case3_ev = (galb < 0) & (r0 < dmax)
+    Veff[case3_ev] =  solid_ang * case3(zeta[case3_ev], eta[case3_ev], k[case3_ev], H)
+
+    # constant case when b == 0
+    caseb_ev = galb == 0
+    Veff[caseb_ev] =  solid_ang * dmax[caseb_ev] ** 3 / 3
+    
     # do not contribute where parallax < 10
     Veff[parallax < 10] = 0.
-    if isinstance(Veff, pl.Series):
-       Veff = Veff.rename('Veff')
+    if is_polars:
+        return pl.Series("Veff", Veff)
     return Veff
 
 
