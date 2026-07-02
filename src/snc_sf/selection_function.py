@@ -15,7 +15,6 @@ import warnings
 import jax
 from jax.experimental.sparse import BCOO
 import jax.numpy as jnp
-import optax
 from jax.nn import sigmoid
 import numpyro
 import numpyro.distributions as dist

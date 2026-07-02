@@ -5,7 +5,6 @@ import numpy as np
 from scipy.stats import beta
 import polars as pl
 from importlib.resources import open_binary, files
-import ast
 from jax.experimental.sparse import BCOO
 import jax.numpy as jnp
 from typing import Tuple
