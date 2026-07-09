@@ -44,6 +44,7 @@ def _make_fake_gcns(n=N_GCNS):
     plx = RNG.uniform(15,   90, n).astype(np.float32)
     G   = RNG.uniform(8,   17, n).astype(np.float32)
     Grp = RNG.uniform(0.3,  1.8, n).astype(np.float32)
+    bprp = RNG.uniform(0.3,  2.5, n).astype(np.float32)
 
     data = {
         'source_id':                  source_ids,
@@ -55,6 +56,7 @@ def _make_fake_gcns(n=N_GCNS):
         'parallax_error':             np.full(n, 0.1, np.float32),
         'phot_g_mean_mag':            G,
         'phot_rp_mean_mag':           G - Grp,
+        'phot_bp_mean_mag':           bprp + (G - Grp),
         'phot_g_mean_flux_over_error': np.full(n, 500.0, np.float32),
         'ruwe':                       np.full(n, 1.0, np.float32),
         'ipd_frac_multi_peak':        np.zeros(n, np.int32),

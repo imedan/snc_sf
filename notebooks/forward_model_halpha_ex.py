@@ -18,11 +18,19 @@ if __name__ == '__main__':
     # get the full dataset
     MG_bin_list = [0, 20, 0.25]
 
-    sf_bins={'healpix': 3,
-            'phot_g_mean_mag': [0, 22, 1],
-            'g_rp': [-0.4, 2.2, 0.05]}
+    use_g_rp = False
+    if use_g_rp:
+        sf_bins={'healpix': 3,
+                'phot_g_mean_mag': [0, 22, 1],
+                'g_rp': [-0.4, 2.2, 0.05]}
+        hr_col = 'g_rp'
+    else:
+        sf_bins={'healpix': 3,
+                'phot_g_mean_mag': [0, 22, 1],
+                'bp_rp': [-0.4, 5.25, 0.15]}
+        hr_col = 'bp_rp'
 
-    n_g_rp = len(np.arange(*sf_bins['g_rp'])) - 1
+    n_col = len(np.arange(*sf_bins[hr_col])) - 1
     n_mg = len(np.arange(*MG_bin_list)) - 1
 
 
@@ -58,7 +66,7 @@ if __name__ == '__main__':
     sf.evalutate_Ajk(weight_volume=False)
 
     # have the bins for plotting
-    g_rp_bins = np.arange(*sf.sf_bins['g_rp'])
+    col_bins = np.arange(*sf.sf_bins[hr_col])
     MG_bins = np.arange(*MG_bin_list)
 
     # run for emmission and absoprtion data
@@ -75,26 +83,26 @@ if __name__ == '__main__':
 
     # subpopulation probability
     f, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(32, 10))
-    dens = ax1.imshow(np.nanpercentile(p_samples_em.reshape((-1, n_g_rp, n_mg)), 2.5, axis=0).T,
+    dens = ax1.imshow(np.nanpercentile(p_samples_em.reshape((-1, n_col, n_mg)), 2.5, axis=0).T,
                     origin='lower', aspect='auto',
-            extent=(g_rp_bins.min(), g_rp_bins.max(), MG_bins.min(), MG_bins.max()),
+            extent=(col_bins.min(), col_bins.max(), MG_bins.min(), MG_bins.max()),
                     vmin=0, vmax=1, cmap='inferno')
     ax1.invert_yaxis()
     ax1.grid()
     ax1.set_title('Subpopulation Probability (2.5%)')
 
-    dens = ax2.imshow(np.nanpercentile(p_samples_em.reshape((-1, n_g_rp, n_mg)), 50, axis=0).T,
+    dens = ax2.imshow(np.nanpercentile(p_samples_em.reshape((-1, n_col, n_mg)), 50, axis=0).T,
                     origin='lower', aspect='auto',
-            extent=(g_rp_bins.min(), g_rp_bins.max(), MG_bins.min(), MG_bins.max()),
+            extent=(col_bins.min(), col_bins.max(), MG_bins.min(), MG_bins.max()),
                     vmin=0, vmax=1, cmap='inferno')
     ax2.invert_yaxis()
     ax2.grid()
     ax2.set_title('Subpopulation Probability (50%)')
 
 
-    dens = ax3.imshow(np.nanpercentile(p_samples_em.reshape((-1, n_g_rp, n_mg)), 97.5, axis=0).T,
+    dens = ax3.imshow(np.nanpercentile(p_samples_em.reshape((-1, n_col, n_mg)), 97.5, axis=0).T,
                     origin='lower', aspect='auto',
-            extent=(g_rp_bins.min(), g_rp_bins.max(), MG_bins.min(), MG_bins.max()),
+            extent=(col_bins.min(), col_bins.max(), MG_bins.min(), MG_bins.max()),
                     vmin=0, vmax=1, cmap='inferno')
     ax3.invert_yaxis()
     ax3.grid()
@@ -105,7 +113,10 @@ if __name__ == '__main__':
     f.colorbar(dens, cax=cbar_ax, label=r'$p_{\mathsf{sub}, k}$')
 
     for ax in [ax1, ax2, ax3]:
-        ax.set_xlabel(r'$G-RP$')
+        if use_g_rp:
+            ax.set_xlabel(r'$G-RP$')
+        else:
+            ax.set_xlabel(r'$BP-RP$')
         ax.set_ylabel(r'$M_G$')
 
     plt.savefig('paper_plots/halpha_ex/forward_mod_prob_emission.png', bbox_inches='tight')
@@ -113,26 +124,26 @@ if __name__ == '__main__':
 
 
     f, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(32, 10))
-    dens = ax1.imshow(np.nanpercentile(p_samples_ab.reshape((-1, n_g_rp, n_mg)), 2.5, axis=0).T,
+    dens = ax1.imshow(np.nanpercentile(p_samples_ab.reshape((-1, n_col, n_mg)), 2.5, axis=0).T,
                     origin='lower', aspect='auto',
-            extent=(g_rp_bins.min(), g_rp_bins.max(), MG_bins.min(), MG_bins.max()),
+            extent=(col_bins.min(), col_bins.max(), MG_bins.min(), MG_bins.max()),
                     vmin=0, vmax=1, cmap='inferno')
     ax1.invert_yaxis()
     ax1.grid()
     ax1.set_title('Subpopulation Probability (2.5%)')
 
-    dens = ax2.imshow(np.nanpercentile(p_samples_ab.reshape((-1, n_g_rp, n_mg)), 50, axis=0).T,
+    dens = ax2.imshow(np.nanpercentile(p_samples_ab.reshape((-1, n_col, n_mg)), 50, axis=0).T,
                     origin='lower', aspect='auto',
-            extent=(g_rp_bins.min(), g_rp_bins.max(), MG_bins.min(), MG_bins.max()),
+            extent=(col_bins.min(), col_bins.max(), MG_bins.min(), MG_bins.max()),
                     vmin=0, vmax=1, cmap='inferno')
     ax2.invert_yaxis()
     ax2.grid()
     ax2.set_title('Subpopulation Probability (50%)')
 
 
-    dens = ax3.imshow(np.nanpercentile(p_samples_ab.reshape((-1, n_g_rp, n_mg)), 97.5, axis=0).T,
+    dens = ax3.imshow(np.nanpercentile(p_samples_ab.reshape((-1, n_col, n_mg)), 97.5, axis=0).T,
                     origin='lower', aspect='auto',
-            extent=(g_rp_bins.min(), g_rp_bins.max(), MG_bins.min(), MG_bins.max()),
+            extent=(col_bins.min(), col_bins.max(), MG_bins.min(), MG_bins.max()),
                     vmin=0, vmax=1, cmap='inferno')
     ax3.invert_yaxis()
     ax3.grid()
@@ -143,7 +154,10 @@ if __name__ == '__main__':
     f.colorbar(dens, cax=cbar_ax, label=r'$p_{\mathsf{sub}, k}$')
 
     for ax in [ax1, ax2, ax3]:
-        ax.set_xlabel(r'$G-RP$')
+        if use_g_rp:
+            ax.set_xlabel(r'$G-RP$')
+        else:
+            ax.set_xlabel(r'$BP-RP$')
         ax.set_ylabel(r'$M_G$')
 
 
@@ -151,25 +165,29 @@ if __name__ == '__main__':
     plt.close()
 
     # M dwarf selection
-    Ntot, _, _ = np.histogram2d(gcns_filter['g_rp'].to_numpy(), gcns_filter['MG'].to_numpy(),
-                                bins=[g_rp_bins, MG_bins])
-    Nboot_em = RNG.binomial(Ntot.astype(int), p_samples_em.reshape((-1, n_g_rp, n_mg)))
-    Nboot_ab = RNG.binomial(Ntot.astype(int), p_samples_ab.reshape((-1, n_g_rp, n_mg)))
+    Ntot, _, _ = np.histogram2d(gcns_filter[hr_col].to_numpy(), gcns_filter['MG'].to_numpy(),
+                                bins=[col_bins, MG_bins])
+    Nboot_em = RNG.binomial(Ntot.astype(int), p_samples_em.reshape((-1, n_col, n_mg)))
+    Nboot_ab = RNG.binomial(Ntot.astype(int), p_samples_ab.reshape((-1, n_col, n_mg)))
 
     f, (ax2) = plt.subplots(1, 1, figsize=(12, 10))
 
     dens = ax2.imshow(np.nanpercentile(Nboot_em, 50, axis=0).T, origin='lower', aspect='auto',
-            extent=(g_rp_bins.min(), g_rp_bins.max(), MG_bins.min(), MG_bins.max()),
+            extent=(col_bins.min(), col_bins.max(), MG_bins.min(), MG_bins.max()),
                     norm=LogNorm(), cmap='inferno')
     plt.colorbar(dens, ax=ax2, label='N')
-    ax2.set_xlim(1, 2)
     ax2.set_ylim(8, 17.5)
     ax2.invert_yaxis()
     ax2.grid()
     ax2.set_title('Forward Model Selection (50%)')
 
     for ax in [ax2]:
-        ax.set_xlabel(r'$G-RP$')
+        if use_g_rp:
+            ax.set_xlim(1, 2)
+            ax.set_xlabel(r'$G-RP$')
+        else:
+            ax.set_xlim(1.5, 5)
+            ax.set_xlabel(r'$BP-RP$')
         ax.set_ylabel(r'$M_G$')
 
 
@@ -180,17 +198,21 @@ if __name__ == '__main__':
     f, (ax2) = plt.subplots(1, 1, figsize=(12, 10))
 
     dens = ax2.imshow(np.nanpercentile(Nboot_ab, 50, axis=0).T, origin='lower', aspect='auto',
-            extent=(g_rp_bins.min(), g_rp_bins.max(), MG_bins.min(), MG_bins.max()),
+            extent=(col_bins.min(), col_bins.max(), MG_bins.min(), MG_bins.max()),
                     norm=LogNorm(), cmap='inferno')
     plt.colorbar(dens, ax=ax2, label='N')
-    ax2.set_xlim(1, 2)
     ax2.set_ylim(8, 17.5)
     ax2.invert_yaxis()
     ax2.grid()
     ax2.set_title('Forward Model Selection (50%)')
 
     for ax in [ax2]:
-        ax.set_xlabel(r'$G-RP$')
+        if use_g_rp:
+            ax.set_xlim(1, 2)
+            ax.set_xlabel(r'$G-RP$')
+        else:
+            ax.set_xlim(1.5, 5)
+            ax.set_xlabel(r'$BP-RP$')
         ax.set_ylabel(r'$M_G$')
 
 
@@ -202,13 +224,13 @@ if __name__ == '__main__':
     f, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(36, 10))
 
     dens = ax1.imshow(np.nanpercentile(Nboot_em, 50, axis=0).T, origin='lower', aspect='auto',
-            extent=(g_rp_bins.min(), g_rp_bins.max(), MG_bins.min(), MG_bins.max()),
+            extent=(col_bins.min(), col_bins.max(), MG_bins.min(), MG_bins.max()),
                     norm=LogNorm(), cmap='inferno')
     plt.colorbar(dens, ax=ax1, label='N')
     ax1.set_title('Emission\n' + r'(E.W. $< -1 \ \AA$)')
 
     dens = ax2.imshow(np.nanpercentile(Nboot_ab, 50, axis=0).T, origin='lower', aspect='auto',
-            extent=(g_rp_bins.min(), g_rp_bins.max(), MG_bins.min(), MG_bins.max()),
+            extent=(col_bins.min(), col_bins.max(), MG_bins.min(), MG_bins.max()),
                     norm=LogNorm(), cmap='inferno')
     plt.colorbar(dens, ax=ax2, label='N')
     ax2.set_title('Comparison Sample\n' + r'(E.W. $> -1 \ \AA$ or E.W. is Null)')
@@ -218,15 +240,19 @@ if __name__ == '__main__':
 
     dens = ax3.imshow(Nem / (Nem + Nab),
                     origin='lower', aspect='auto',
-            extent=(g_rp_bins.min(), g_rp_bins.max(), MG_bins.min(), MG_bins.max()),
-                    cmap='seismic', vmin=0, vmax=1)
+            extent=(col_bins.min(), col_bins.max(), MG_bins.min(), MG_bins.max()),
+                    cmap='coolwarm', vmin=0, vmax=1)
     plt.colorbar(dens, ax=ax3, label=r'N / N$_{tot}$')
     ax3.set_title('Emission /  (Emission + Comparison Sample)\n')
 
     for ax in [ax1, ax2, ax3]:
-        ax.set_xlabel(r'$G-RP$')
+        if use_g_rp:
+            ax.set_xlabel(r'$G-RP$')
+            ax.set_xlim(1, 2)
+        else:
+            ax.set_xlim(1.5, 5)
+            ax.set_xlabel(r'$BP-RP$')
         ax.set_ylabel(r'$M_G$')
-        ax.set_xlim(1, 2)
         ax.set_ylim(8, 17.5)
         ax.invert_yaxis()
         ax.grid()
