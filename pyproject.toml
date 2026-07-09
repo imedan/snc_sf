@@ -1,6 +1,6 @@
 [project]
 name = "snc-sf"
-version = "1.0.0"
+version = "1.1.0"
 description = ""
 authors = [
     {name = "imedan",email = "ilija.medan@gmail.com"}
