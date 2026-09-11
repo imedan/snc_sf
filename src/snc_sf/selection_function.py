@@ -269,7 +269,7 @@ class SNCSelectionFunction(object):
         
         # zero out k = 0
         self.gcns = self.gcns.with_columns(
-            pl.when(pl.col("healpix_") == 0)
+            pl.when(pl.col("k") == 0)
             .then(pl.lit([0.] * self.nsamps).cast(pl.Array(pl.Float64, self.nsamps)))
             .otherwise(pl.col("pselect_samps"))
             .alias("pselect_samps")
